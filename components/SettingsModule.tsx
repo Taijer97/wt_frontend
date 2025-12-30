@@ -11,6 +11,7 @@ import {
   ShieldQuestion, AlertTriangle, FileText, Calculator
 } from 'lucide-react';
 import { fetchRuc } from '../services/rucService';
+import { fetchDni } from '../services/dniService';
 
 export const SettingsModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'general' | 'proveedores' | 'intermediarios' | 'trabajadores' | 'roles'>('general');
@@ -701,22 +702,47 @@ const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) =
 
 const IntermediaryForm: React.FC<{ initialData?: Intermediary, onSubmit: (i: Intermediary) => void, onCancel: () => void }> = ({ initialData, onSubmit, onCancel }) => {
     const [formData, setFormData] = useState<Intermediary>(initialData || { id: Date.now().toString(), docNumber: '', fullName: '', rucNumber: '', phone: '', email: '', address: '' });
-    const handleDniBlur = async () => {
-        const dni = (formData.docNumber || '').trim();
+    const [loadingDni, setLoadingDni] = useState(false);
+    const handleFetchDni = async (dniRaw?: string) => {
+        const dni = (((dniRaw ?? formData.docNumber)) || '').trim();
         if (!dni || dni.length < 8) return;
         try {
+            setLoadingDni(true);
             const info = await fetchDni(dni);
-            setFormData({
-                ...formData,
-                fullName: info.fullName || formData.fullName,
-                address: info.direccion || formData.address
-            });
-        } catch {}
+            setFormData(f => ({
+                ...f,
+                fullName: info.fullName || f.fullName,
+                address: info.direccion || f.address
+            }));
+        } finally {
+            setLoadingDni(false);
+        }
     };
     return (
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">DNI del Intermediario</label><input value={formData.docNumber} onChange={e => setFormData({...formData, docNumber: e.target.value})} onBlur={handleDniBlur} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="8 dígitos" required maxLength={8} /></div>
+                <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">DNI del Intermediario</label>
+                    <div className="flex gap-2">
+                        <input 
+                            value={formData.docNumber} 
+                            onChange={e => { 
+                                const v = e.target.value;
+                                setFormData({...formData, docNumber: v});
+                                if (v.trim().length === 8 && !loadingDni) handleFetchDni(v);
+                            }} 
+                            onBlur={() => handleFetchDni()} 
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleFetchDni(); } }} 
+                            className="flex-1 border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" 
+                            placeholder="8 dígitos" 
+                            required 
+                            maxLength={8} 
+                        />
+                        <button type="button" onClick={() => handleFetchDni()} className="px-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 active:scale-95 transition">
+                            <Search className={`w-4 h-4 ${loadingDni ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
+                </div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC 10 (Opcional)</label><input value={formData.rucNumber} onChange={e => setFormData({...formData, rucNumber: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="10XXXXXXXXX" maxLength={11} /></div>
                 <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre y Apellidos</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" required /></div>
@@ -737,10 +763,12 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
         role: 'USER', jobTitle: 'COLABORADOR', entryDate: new Date().toISOString().split('T')[0],
         password: ''
     });
-    const handleDniBlur = async () => {
-        const dni = (formData.docNumber || '').trim();
+    const [loadingDni, setLoadingDni] = useState(false);
+    const handleFetchDni = async (dniRaw?: string) => {
+        const dni = (((dniRaw ?? formData.docNumber)) || '').trim();
         if (!dni || dni.length < 8) return;
         try {
+            setLoadingDni(true);
             const info = await fetchDni(dni);
             const civ = (info.estadoCivil || '').toUpperCase();
             const civMap: Record<string, CivilStatus> = {
@@ -749,13 +777,15 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
                 VIUDO: CivilStatus.VIUDO,
                 DIVORCIADO: CivilStatus.DIVORCIADO
             };
-            setFormData({
-                ...formData,
-                fullName: info.fullName || formData.fullName,
-                address: info.direccion || formData.address,
-                civilStatus: civMap[civ] || formData.civilStatus
-            });
-        } catch {}
+            setFormData(f => ({
+                ...f,
+                fullName: info.fullName || f.fullName,
+                address: info.direccion || f.address,
+                civilStatus: civMap[civ] || f.civilStatus
+            }));
+        } finally {
+            setLoadingDni(false);
+        }
     };
     return (
         <form onSubmit={(ev) => { ev.preventDefault(); onSubmit(formData); }} className="space-y-6">
@@ -763,7 +793,26 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
                 <div className="md:col-span-2 space-y-4">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-1">Datos de Cuenta y Perfil</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">DNI / Usuario</label><input value={formData.docNumber} onChange={e => setFormData({...formData, docNumber: e.target.value})} onBlur={handleDniBlur} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" required /></div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">DNI / Usuario</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    value={formData.docNumber} 
+                                    onChange={e => { 
+                                        const v = e.target.value;
+                                        setFormData({...formData, docNumber: v});
+                                        if (v.trim().length === 8 && !loadingDni) handleFetchDni(v);
+                                    }} 
+                                    onBlur={() => handleFetchDni()} 
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleFetchDni(); } }} 
+                                    className="flex-1 border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" 
+                                    required 
+                                />
+                                <button type="button" onClick={() => handleFetchDni()} className="px-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 active:scale-95 transition">
+                                    <Search className={`w-4 h-4 ${loadingDni ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
+                        </div>
                         <div>
                             <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Rol del Sistema</label>
                             <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as UserRole})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase text-xs">

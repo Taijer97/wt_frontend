@@ -50,7 +50,10 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://100.116.47.110:8000/ws/updates');
+    const isDev = !!(import.meta as any).env?.DEV;
+    const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://100.116.47.110:8000';
+    const wsUrl = isDev ? `ws://${window.location.host}/ws/updates` : `${String(base).replace(/^http/, 'ws')}/ws/updates`;
+    const ws = new WebSocket(wsUrl);
     ws.onopen = () => console.log('WS conectado');
     ws.onmessage = (ev) => { console.log('WS mensaje:', ev.data); setWsMsg(String(ev.data)); setTimeout(() => setWsMsg(null), 5000); };
     ws.onerror = (e) => console.error('WS error', e);
