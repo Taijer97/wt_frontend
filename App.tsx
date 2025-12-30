@@ -50,7 +50,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws/updates');
+    const ws = new WebSocket('ws://100.116.47.110:8000/ws/updates');
     ws.onopen = () => console.log('WS conectado');
     ws.onmessage = (ev) => { console.log('WS mensaje:', ev.data); setWsMsg(String(ev.data)); setTimeout(() => setWsMsg(null), 5000); };
     ws.onerror = (e) => console.error('WS error', e);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BackendService } from '../services/backendService';
-import { PackageSearch, ArrowRight, UserCircle, Lock, AlertCircle } from 'lucide-react';
+import { ArrowRight, UserCircle, Lock, AlertCircle } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import { Employee } from '../types';
 
 interface LoginProps {
@@ -29,7 +30,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onGoToRegister }) 
           <div className="absolute inset-0 bg-black opacity-10 pattern-grid-lg"></div>
           <div className="relative z-10">
              <div className="flex items-center gap-3 mb-6">
-                <PackageSearch className="w-10 h-10 text-emerald-300" />
+                <BrandLogo className="w-10 h-10" alt="WasiTech" />
                 <h1 className="text-3xl font-bold tracking-tight">WASITECH</h1>
              </div>
              <p className="text-emerald-100 text-lg leading-relaxed">

@@ -7,13 +7,13 @@ import {
   Store, 
   FileText, 
   Settings,
-  PackageSearch,
   Truck,
   History,
   LogOut,
   Users,
   WalletCards
 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import { Employee, UserRole, AppModule } from '../types';
 import { DataService } from '../services/dataService';
 
@@ -68,7 +68,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
       <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-2xl transition-all duration-300">
         <div className="p-6 border-b border-slate-700">
           <h1 className="text-xl font-bold tracking-tight text-emerald-400 flex items-center gap-2">
-            <PackageSearch className="w-6 h-6" />
+            <BrandLogo className="w-6 h-6" alt="WasiTech" />
             WASITECH
           </h1>
           <p className="text-xs text-slate-400 mt-1 pl-8">Gestión Integral RUC 10/20</p>
