@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        allowedHosts: ['localhost', '127.0.0.1', '509ffb6e801a.ngrok-free.app'],
+        allowedHosts: ['localhost', '127.0.0.1', '100.116.47.110'],
         proxy
       },
       plugins: [react()],

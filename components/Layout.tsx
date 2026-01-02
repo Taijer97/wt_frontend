@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -13,6 +13,7 @@ import {
   Users,
   WalletCards
 } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { Employee, UserRole, AppModule } from '../types';
 import { DataService } from '../services/dataService';
@@ -62,10 +63,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
     }
   };
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const asideClasses = `fixed inset-y-0 left-0 w-64 bg-slate-900 text-white flex flex-col shadow-2xl transform transition-transform duration-300 z-40 md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`;
+
   return (
-    <div className="flex h-screen bg-gray-100 text-slate-800 font-sans">
+    <div className="h-screen bg-gray-100 text-slate-800 font-sans md:flex">
+      {sidebarOpen && <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-2xl transition-all duration-300">
+      <aside className={asideClasses}>
         <div className="p-6 border-b border-slate-700">
           <h1 className="text-xl font-bold tracking-tight text-emerald-400 flex items-center gap-2">
             <BrandLogo className="w-6 h-6" alt="WasiTech" />
@@ -78,7 +83,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
           {filteredItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onTabChange(item.id)}
+              onClick={() => { onTabChange(item.id); setSidebarOpen(false); }}
               className={`flex items-center w-full px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 group ${
                 activeTab === item.id
                   ? 'bg-emerald-600 text-white shadow-lg translate-x-1'
@@ -114,9 +119,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
       <main className="flex-1 overflow-y-auto flex flex-col">
         <header className="bg-white shadow-sm sticky top-0 z-20 border-b border-gray-200 print:hidden">
           <div className="px-8 py-4 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-slate-800 tracking-tight">
-              {filteredItems.find(i => i.id === activeTab)?.label}
-            </h2>
+            <div className="flex items-center gap-3">
+              <button className="md:hidden p-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95" onClick={() => setSidebarOpen(true)}>
+                <Menu className="w-5 h-5" />
+              </button>
+              <h2 className="text-xl font-semibold text-slate-800 tracking-tight">
+                {filteredItems.find(i => i.id === activeTab)?.label}
+              </h2>
+            </div>
             <div className="flex items-center gap-4">
               <span className="text-xs font-medium px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>

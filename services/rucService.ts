@@ -12,27 +12,33 @@ export async function fetchRuc(ruc: string) {
     throw new Error('RUC API token no configurado');
   }
   const url = `${base.replace(/\/+$/, '')}/${ruc}`;
-  const res = await axios.get(url, { 
-    params: token ? { token } : undefined
-  });
-  const data = res.data || {};
-  const razonSocial = data.razonSocial || '';
-  const nombreComercial = data.nombreComercial || '';
-  const direccion = data.direccion || '';
-  const departamento = data.departamento || '';
-  const provincia = data.provincia || '';
-  const distrito = data.distrito || '';
-  const estado = data.estado || '';
-  const condicion = data.condicion || '';
-  return {
-    ruc: data.ruc || ruc,
-    razonSocial,
-    nombreComercial,
-    direccion,
-    departamento,
-    provincia,
-    distrito,
-    estado,
-    condicion,
-  };
+  try {
+    const res = await axios.get(url, { 
+      params: token ? { token } : undefined
+    });
+    console.log(`[RUC API] Conexión exitosa (200) a: ${url}`);
+    const data = res.data || {};
+    const razonSocial = data.razonSocial || '';
+    const nombreComercial = data.nombreComercial || '';
+    const direccion = data.direccion || '';
+    const departamento = data.departamento || '';
+    const provincia = data.provincia || '';
+    const distrito = data.distrito || '';
+    const estado = data.estado || '';
+    const condicion = data.condicion || '';
+    return {
+      ruc: data.ruc || ruc,
+      razonSocial,
+      nombreComercial,
+      direccion,
+      departamento,
+      provincia,
+      distrito,
+      estado,
+      condicion,
+    };
+  } catch (err: any) {
+    const msg = err?.response?.data?.message || err?.message || 'Error RUC';
+    throw new Error(msg);
+  }
 }
