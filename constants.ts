@@ -1,11 +1,11 @@
 
-import { AppConfig, PensionSystem, Product, ReceiptType, Employee, TaxRegime, RoleConfig, PermissionSet, AppModule } from './types';
+import { AppConfig, PensionSystem, Product, ReceiptType, Employee, TaxRegime, UserRoleConfig, PermissionSet, AppModule } from './types';
 
 const allAccess = (): PermissionSet => ({ create: true, read: true, update: true, delete: true });
 const readOnly = (): PermissionSet => ({ create: false, read: true, update: false, delete: false });
 const noAccess = (): PermissionSet => ({ create: false, read: false, update: false, delete: false });
 
-const ROLES_DEFAULT: RoleConfig[] = [
+const ROLES_DEFAULT: UserRoleConfig[] = [
   {
     role: 'ADMIN',
     label: 'Administrador Total',

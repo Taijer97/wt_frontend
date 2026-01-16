@@ -1,5 +1,6 @@
 import api from './api';
-import { Employee, Product } from '../types';
+import axios from 'axios';
+import { Employee, Product, Intermediary, ExpenseStatus } from '../types';
 
 const LS_SESSION = 'mype_session';
 
@@ -58,6 +59,7 @@ export const BackendService = {
       id: String(p.id),
       category: p.category,
       serialNumber: p.serial_number,
+      idType: p.id_type,
       brand: p.brand,
       model: p.model,
       specs: p.specs,
@@ -69,17 +71,24 @@ export const BackendService = {
       notaryCost: p.notary_cost,
       totalCost: p.total_cost,
       intermediaryId: p.intermediary_id ? String(p.intermediary_id) : undefined,
+      transferBase: p.transfer_base,
+      transferIgv: p.transfer_igv,
+      transferTotal: p.transfer_total,
+      transferDocType: p.transfer_doc_type,
+      transferDocNumber: p.transfer_doc_number,
+      transferDate: p.transfer_date,
     }));
   },
 
   async createProduct(payload: Partial<Product>): Promise<Product> {
     const res = await api.post('/products', {
-      category: payload.category,
-      serial_number: payload.serialNumber,
-      brand: payload.brand,
-      model: payload.model,
-      specs: payload.specs,
-      condition: payload.condition,
+      category: payload.category?.toUpperCase().trim(),
+      serial_number: payload.serialNumber?.toUpperCase().trim(),
+      id_type: payload.idType?.toUpperCase().trim(),
+      brand: payload.brand?.toUpperCase().trim(),
+      model: payload.model?.toUpperCase().trim(),
+      specs: payload.specs?.toUpperCase().trim(),
+      condition: payload.condition?.toUpperCase().trim(),
       status: BackendService._statusToBackend(payload.status),
       origin: payload.origin,
       stock: payload.stock ?? 1,
@@ -87,6 +96,12 @@ export const BackendService = {
       notary_cost: payload.notaryCost,
       total_cost: payload.totalCost,
       intermediary_id: payload.intermediaryId ? Number(payload.intermediaryId) : null,
+      transfer_base: payload.transferBase,
+      transfer_igv: payload.transferIgv,
+      transfer_total: payload.transferTotal,
+      transfer_doc_type: payload.transferDocType?.toUpperCase().trim(),
+      transfer_doc_number: payload.transferDocNumber?.toUpperCase().trim(),
+      transfer_date: payload.transferDate,
     });
     const p = res.data;
     return {
@@ -104,6 +119,12 @@ export const BackendService = {
       notaryCost: p.notary_cost,
       totalCost: p.total_cost,
       intermediaryId: p.intermediary_id ? String(p.intermediary_id) : undefined,
+      transferBase: p.transfer_base,
+      transferIgv: p.transfer_igv,
+      transferTotal: p.transfer_total,
+      transferDocType: p.transfer_doc_type,
+      transferDocNumber: p.transfer_doc_number,
+      transferDate: p.transfer_date,
     };
   },
 
@@ -126,17 +147,17 @@ export const BackendService = {
 
   async createEmployee(payload: Partial<Employee> & { password: string }): Promise<Employee> {
     const body: any = {
-      full_name: payload.fullName,
-      doc_number: payload.docNumber,
+      full_name: payload.fullName?.toUpperCase().trim(),
+      doc_number: payload.docNumber?.toUpperCase().trim(),
       password: payload.password,
       base_salary: payload.baseSalary,
-      pension_system: payload.pensionSystem,
+      pension_system: payload.pensionSystem?.toUpperCase().trim(),
       has_children: payload.hasChildren,
-      role: payload.role,
+      role: payload.role?.toUpperCase().trim(),
     };
-    if (payload.phone) body.phone = payload.phone;
-    if (payload.email) body.email = payload.email;
-    if (payload.address) body.address = payload.address;
+    if (payload.phone) body.phone = payload.phone.toUpperCase().trim();
+    if (payload.email) body.email = payload.email.toUpperCase().trim();
+    if (payload.address) body.address = payload.address.toUpperCase().trim();
     const res = await api.post('/employees', body);
     const e = res.data;
     return {
@@ -154,14 +175,14 @@ export const BackendService = {
   },
   async updateEmployee(id: string, payload: Partial<Employee>): Promise<Employee> {
     const body: any = {
-      full_name: payload.fullName,
-      phone: payload.phone,
-      email: payload.email,
-      address: payload.address,
+      full_name: payload.fullName?.toUpperCase().trim(),
+      phone: payload.phone?.toUpperCase().trim(),
+      email: payload.email?.toUpperCase().trim(),
+      address: payload.address?.toUpperCase().trim(),
       base_salary: payload.baseSalary,
-      pension_system: payload.pensionSystem,
+      pension_system: payload.pensionSystem?.toUpperCase().trim(),
       has_children: payload.hasChildren,
-      role: payload.role,
+      role: payload.role?.toUpperCase().trim(),
     };
     const res = await api.put(`/employees/${id}`, body);
     const e = res.data;
@@ -186,12 +207,13 @@ export const BackendService = {
 
   async updateProduct(id: string, payload: Partial<Product>): Promise<Product> {
     const res = await api.put(`/products/${id}`, {
-      category: payload.category,
-      serial_number: payload.serialNumber,
-      brand: payload.brand,
-      model: payload.model,
-      specs: payload.specs,
-      condition: payload.condition,
+      category: payload.category?.toUpperCase().trim(),
+      serial_number: payload.serialNumber?.toUpperCase().trim(),
+      id_type: payload.idType?.toUpperCase().trim(),
+      brand: payload.brand?.toUpperCase().trim(),
+      model: payload.model?.toUpperCase().trim(),
+      specs: payload.specs?.toUpperCase().trim(),
+      condition: payload.condition?.toUpperCase().trim(),
       status: BackendService._statusToBackend(payload.status),
       origin: payload.origin,
       stock: payload.stock,
@@ -199,6 +221,12 @@ export const BackendService = {
       notary_cost: payload.notaryCost,
       total_cost: payload.totalCost,
       intermediary_id: payload.intermediaryId ? Number(payload.intermediaryId) : null,
+      transfer_base: payload.transferBase,
+      transfer_igv: payload.transferIgv,
+      transfer_total: payload.transferTotal,
+      transfer_doc_type: payload.transferDocType?.toUpperCase().trim(),
+      transfer_doc_number: payload.transferDocNumber?.toUpperCase().trim(),
+      transfer_date: payload.transferDate,
     });
     const p = res.data;
     return {
@@ -216,29 +244,48 @@ export const BackendService = {
       notaryCost: p.notary_cost,
       totalCost: p.total_cost,
       intermediaryId: p.intermediary_id ? String(p.intermediary_id) : undefined,
+      transferBase: p.transfer_base,
+      transferIgv: p.transfer_igv,
+      transferTotal: p.transfer_total,
+      transferDocType: p.transfer_doc_type,
+      transferDocNumber: p.transfer_doc_number,
+      transferDate: p.transfer_date,
     };
   },
 
+  async deleteProduct(id: string) {
+    const res = await api.delete(`/products/${id}`);
+    return res.data;
+  },
+
   async createTransaction(payload: {
-    trx_type: 'sale' | 'purchase' | 'transfer';
-    document_type: string;
-    document_number: string;
-    entity_name: string;
-    entity_doc_number: string;
-    base_amount: number;
-    igv_amount: number;
-    total_amount: number;
-    pdf_url?: string;
-    items: { product_id?: string; product_name: string; quantity: number; unit_price_base: number; total_base: number }[];
+    trxType: 'sale' | 'purchase' | 'transfer';
+    documentType: string;
+    documentNumber: string;
+    entityName: string;
+    entityDocNumber: string;
+    baseAmount: number;
+    igvAmount: number;
+    totalAmount: number;
+    pdfUrl?: string;
+    items: { productId?: string; productName: string; quantity: number; unitPriceBase: number; totalBase: number }[];
   }) {
     const res = await api.post('/transactions', {
-      ...payload,
+      trx_type: payload.trxType,
+      document_type: payload.documentType?.toUpperCase().trim(),
+      document_number: payload.documentNumber?.toUpperCase().trim(),
+      entity_name: payload.entityName?.toUpperCase().trim(),
+      entity_doc_number: payload.entityDocNumber?.toUpperCase().trim(),
+      base_amount: payload.baseAmount,
+      igv_amount: payload.igvAmount,
+      total_amount: payload.totalAmount,
+      pdf_url: payload.pdfUrl,
       items: payload.items.map(i => ({
-        product_id: i.product_id ? Number(i.product_id) : null,
-        product_name: i.product_name,
+        product_id: i.productId ? Number(i.productId) : null,
+        product_name: i.productName?.toUpperCase().trim(),
         quantity: i.quantity,
-        unit_price_base: i.unit_price_base,
-        total_base: i.total_base,
+        unit_price_base: i.unitPriceBase,
+        total_base: i.totalBase,
       })),
     });
     return res.data;
@@ -250,37 +297,73 @@ export const BackendService = {
   },
   async createPurchase(payload: {
     type: string;
-    document_number: string;
-    supplier_id?: number | null;
-    intermediary_id?: number | null;
-    base_amount: number;
-    igv_amount: number;
-    total_amount: number;
-    pdf_url?: string | null;
-    provider_name?: string | null;
-    product_brand?: string | null;
-    product_model?: string | null;
-    product_serial?: string | null;
-    product_condition?: string | null;
-    seller_doc_number?: string | null;
-    seller_full_name?: string | null;
-    seller_address?: string | null;
-    seller_civil_status?: string | null;
+    documentNumber: string;
+    supplierId?: number | null;
+    intermediaryId?: number | null;
+    baseAmount: number;
+    igvAmount: number;
+    totalAmount: number;
+    pdfUrl?: string | null;
+    providerName?: string | null;
+    productBrand?: string | null;
+    productModel?: string | null;
+    productSerial?: string | null;
+    productIdType?: string | null;
+    productCondition?: string | null;
+    sellerDocNumber?: string | null;
+    sellerFullName?: string | null;
+    sellerAddress?: string | null;
+    sellerCivilStatus?: string | null;
     date?: string | null;
     items?: { category?: string; brand?: string; model?: string; serial?: string; specs?: string; cost?: number }[];
   }) {
-    const res = await api.post('/purchases', payload);
+    const res = await api.post('/purchases', {
+      type: payload.type?.toUpperCase().trim(),
+      document_number: payload.documentNumber?.toUpperCase().trim(),
+      supplier_id: payload.supplierId,
+      intermediary_id: payload.intermediaryId,
+      base_amount: payload.baseAmount,
+      igv_amount: payload.igvAmount,
+      total_amount: payload.totalAmount,
+      pdf_url: payload.pdfUrl,
+      provider_name: payload.providerName?.toUpperCase().trim(),
+      product_brand: payload.productBrand?.toUpperCase().trim(),
+      product_model: payload.productModel?.toUpperCase().trim(),
+      product_serial: payload.productSerial?.toUpperCase().trim(),
+      product_id_type: payload.productIdType?.toUpperCase().trim(),
+      product_condition: payload.productCondition?.toUpperCase().trim(),
+      seller_doc_number: payload.sellerDocNumber?.toUpperCase().trim(),
+      seller_full_name: payload.sellerFullName?.toUpperCase().trim(),
+      seller_address: payload.sellerAddress?.toUpperCase().trim(),
+      seller_civil_status: payload.sellerCivilStatus?.toUpperCase().trim(),
+      date: payload.date,
+      items: payload.items?.map(i => ({
+        category: i.category?.toUpperCase().trim(),
+        brand: i.brand?.toUpperCase().trim(),
+        model: i.model?.toUpperCase().trim(),
+        serial: i.serial?.toUpperCase().trim(),
+        specs: i.specs?.toUpperCase().trim(),
+        cost: i.cost,
+      })),
+    });
     return res.data;
   },
   async updatePurchase(id: string, payload: Partial<{
     status: string;
-    pdf_url: string | null;
-    provider_name: string | null;
-    product_brand: string | null;
-    product_model: string | null;
-    product_serial: string | null;
+    pdfUrl: string | null;
+    providerName: string | null;
+    productBrand: string | null;
+    productModel: string | null;
+    productSerial: string | null;
   }>) {
-    const res = await api.put(`/purchases/${id}`, payload);
+    const res = await api.put(`/purchases/${id}`, {
+      status: payload.status?.toUpperCase().trim(),
+      pdf_url: payload.pdfUrl,
+      provider_name: payload.providerName?.toUpperCase().trim(),
+      product_brand: payload.productBrand?.toUpperCase().trim(),
+      product_model: payload.productModel?.toUpperCase().trim(),
+      product_serial: payload.productSerial?.toUpperCase().trim(),
+    });
     return res.data;
   },
   async generatePurchaseDoc(id: string, docKind: 'contract' | 'dj') {
@@ -295,8 +378,12 @@ export const BackendService = {
     const form = new FormData();
     form.append('file', file);
     if (docKind) form.append('doc_kind', docKind);
-    const res = await api.post(`/purchases/${id}/upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    
+    // Use raw axios to avoid default headers issues
+    const baseURL = api.defaults.baseURL || '';
+    const res = await axios.post(`${baseURL}/purchases/${id}/upload`, form, {
+      withCredentials: true,
+      headers: { 'ngrok-skip-browser-warning': 'true' }
     });
     return res.data as { url: string; filename: string; doc_kind?: string };
   },
@@ -307,11 +394,24 @@ export const BackendService = {
   },
 
   async createSupplier(payload: { name: string; ruc: string; contact?: string }) {
-    const res = await api.post('/suppliers', payload);
+    const res = await api.post('/suppliers', {
+      name: payload.name?.toUpperCase().trim(),
+      ruc: payload.ruc?.toUpperCase().trim(),
+      contact: payload.contact?.toUpperCase().trim(),
+    });
     return res.data;
   },
   async updateSupplier(id: string, payload: { name?: string; contact?: string; category?: string; department?: string; province?: string; district?: string; address?: string; phone?: string }) {
-    const res = await api.put(`/suppliers/${id}`, payload);
+    const res = await api.put(`/suppliers/${id}`, {
+      name: payload.name?.toUpperCase().trim(),
+      contact: payload.contact?.toUpperCase().trim(),
+      category: payload.category?.toUpperCase().trim(),
+      department: payload.department?.toUpperCase().trim(),
+      province: payload.province?.toUpperCase().trim(),
+      district: payload.district?.toUpperCase().trim(),
+      address: payload.address?.toUpperCase().trim(),
+      phone: payload.phone?.toUpperCase().trim(),
+    });
     return res.data;
   },
 
@@ -320,21 +420,41 @@ export const BackendService = {
     return res.data;
   },
 
-  async getIntermediaries() {
+  async getIntermediaries(): Promise<Intermediary[]> {
     const res = await api.get('/intermediaries');
-    return res.data;
+    const items = res.data as any[];
+    return items.map((i: any) => ({
+      id: String(i.id),
+      fullName: i.name,
+      docNumber: i.doc_number,
+      rucNumber: i.ruc_number || '',
+      phone: i.phone || '',
+      email: i.email || '',
+      address: i.address || '',
+    }));
   },
   async getConfig() {
     const res = await api.get('/config');
     return res.data;
   },
   async updateConfig(config: any) {
-    const res = await api.put('/config', config);
+    const res = await api.put('/config', {
+      ...config,
+      companyName: config.companyName?.toUpperCase().trim(),
+      igvExemptionReason: config.igvExemptionReason?.toUpperCase().trim(),
+    });
     return res.data;
   },
 
   async createIntermediary(payload: { doc_number: string; name: string; ruc_number?: string; phone?: string; email?: string; address?: string }) {
-    const res = await api.post('/intermediaries', payload);
+    const res = await api.post('/intermediaries', {
+      doc_number: payload.doc_number?.toUpperCase().trim(),
+      name: payload.name?.toUpperCase().trim(),
+      ruc_number: payload.ruc_number?.toUpperCase().trim(),
+      phone: payload.phone?.toUpperCase().trim(),
+      email: payload.email?.toUpperCase().trim(),
+      address: payload.address?.toUpperCase().trim(),
+    });
     return res.data;
   },
 
@@ -343,7 +463,13 @@ export const BackendService = {
     return res.data;
   },
   async updateIntermediary(id: string, payload: { name?: string; ruc_number?: string; phone?: string; email?: string; address?: string }) {
-    const res = await api.put(`/intermediaries/${id}`, payload);
+    const res = await api.put(`/intermediaries/${id}`, {
+      name: payload.name?.toUpperCase().trim(),
+      ruc_number: payload.ruc_number?.toUpperCase().trim(),
+      phone: payload.phone?.toUpperCase().trim(),
+      email: payload.email?.toUpperCase().trim(),
+      address: payload.address?.toUpperCase().trim(),
+    });
     return res.data;
   },
   async getTransactions(trxType?: 'sale' | 'purchase' | 'transfer') {
@@ -368,24 +494,37 @@ export const BackendService = {
       igvAmount: t.igv_amount,
       totalAmount: t.total_amount,
       sunatStatus: t.sunat_status || 'ACEPTADO',
-      pdfUrl: t.pdf_url || undefined,
+      pdfUrl: BackendService.resolveUrl(t.pdf_url),
       xmlUrl: undefined,
       isIgvExempt: false,
       exemptionReason: undefined,
       // extras for UI
-      voucherUrl: t.voucher_url || undefined,
+      voucherUrl: BackendService.resolveUrl(t.voucher_url),
       trxType: t.trx_type,
     }));
   },
 
   async uploadTransactionFile(id: string, file: File, docKind: 'invoice' | 'voucher') {
+    console.log(`Uploading file for trx ${id}, kind: ${docKind}, file: ${file.name}`);
     const form = new FormData();
-    form.append('file', file);
     form.append('doc_kind', docKind);
-    const res = await api.post(`/transactions/${id}/upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    form.append('file', file);
+    
+    // Use raw axios to avoid default 'Content-Type: application/json' from api instance
+    const baseURL = (api as any).defaults?.baseURL || '';
+    const res = await axios.post(`${baseURL}/transactions/${id}/upload`, form, {
+      withCredentials: true,
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      }
     });
+    console.log('Upload response:', res.data);
     return res.data as { url: string; filename: string; doc_kind: string };
+  },
+
+  async deleteTransaction(id: string) {
+    const res = await api.delete(`/transactions/${id}`);
+    return res.data;
   },
 
   async getExpenses() {
@@ -399,7 +538,7 @@ export const BackendService = {
       amount: e.amount,
       paymentMethod: 'TRANSFERENCIA' as any,
       beneficiary: '',
-      status: e.status === 'COMPLETED' ? 'COMPLETADO' : 'PENDIENTE_DOCS',
+      status: e.status === 'COMPLETED' ? ExpenseStatus.COMPLETED : ExpenseStatus.PENDING_DOCS,
       documentType: undefined,
       documentNumber: undefined,
       documentUrl: BackendService.resolveUrl(e.pdf_url || undefined),
@@ -407,12 +546,18 @@ export const BackendService = {
   },
 
   async createExpense(payload: { description: string; amount: number; date: string; status: 'PENDING' | 'COMPLETED' }) {
-    const res = await api.post('/expenses', payload);
+    const res = await api.post('/expenses', {
+      ...payload,
+      description: payload.description?.toUpperCase().trim(),
+    });
     return res.data;
   },
 
-  async updateExpense(id: string, payload: { status?: 'PENDING' | 'COMPLETED'; pdf_url?: string }) {
-    const res = await api.put(`/expenses/${id}`, payload);
+  async updateExpense(id: string, payload: { status?: 'PENDING' | 'COMPLETED'; pdfUrl?: string }) {
+    const res = await api.put(`/expenses/${id}`, {
+      status: payload.status,
+      pdf_url: payload.pdfUrl,
+    });
     return res.data;
   },
 
@@ -424,8 +569,12 @@ export const BackendService = {
   async uploadExpenseFile(id: string, file: File) {
     const form = new FormData();
     form.append('file', file);
-    const res = await api.post(`/expenses/${id}/upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    
+    // Use raw axios to avoid default headers issues
+    const baseURL = api.defaults.baseURL || '';
+    const res = await axios.post(`${baseURL}/expenses/${id}/upload`, form, {
+      withCredentials: true,
+      headers: { 'ngrok-skip-browser-warning': 'true' }
     });
     return res.data as { url: string; filename: string };
   },
@@ -435,11 +584,17 @@ export const BackendService = {
     return res.data;
   },
   async createRole(payload: any) {
-    const res = await api.post('/roles', payload);
+    const res = await api.post('/roles', {
+      ...payload,
+      name: payload.name?.toUpperCase().trim(),
+    });
     return res.data;
   },
   async updateRole(id: string, payload: any) {
-    const res = await api.put(`/roles/${id}`, payload);
+    const res = await api.put(`/roles/${id}`, {
+      ...payload,
+      name: payload.name?.toUpperCase().trim(),
+    });
     return res.data;
   },
   async deleteRole(id: string) {

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Upload, FileText, AlertTriangle, User, Monitor, DollarSign, Clock, CheckCircle, Search, Paperclip, Printer, ScrollText, X, ShieldCheck, Camera, FileDigit, FileType, History, Tag, Package, Trash2, Pencil, Download, Eye, ArrowRight } from 'lucide-react';
+import { Save, Upload, FileText, AlertTriangle, User, Monitor, DollarSign, Clock, CheckCircle, Search, Paperclip, Printer, ScrollText, X, ShieldCheck, Camera, FileDigit, FileType, History, Tag, Package, Trash2, Pencil, Download, Eye, ArrowRight, RefreshCw } from 'lucide-react';
 import { CivilStatus, HardwareOrigin, PurchaseEntry, PurchaseStatus, AppConfig, Employee, Intermediary } from '../types';
 import { DataService } from '../services/dataService';
 import { fetchDni } from '../services/dniService';
@@ -23,16 +23,7 @@ export const PurchaseModule: React.FC = () => {
   const loadIntermediaries = async () => {
     try {
       const inters = await BackendService.getIntermediaries();
-      const mapped: Intermediary[] = inters.map((i: any) => ({
-        id: String(i.id),
-        fullName: i.name,
-        docNumber: i.doc_number,
-        rucNumber: i.ruc_number || '',
-        phone: i.phone || '',
-        email: i.email || '',
-        address: i.address || ''
-      }));
-      setIntermediaries(mapped);
+      setIntermediaries(inters);
     } catch {
       setIntermediaries(DataService.getIntermediaries());
     }
@@ -58,6 +49,7 @@ export const PurchaseModule: React.FC = () => {
         productBrand: (p.items && p.items.length > 0) ? (p.items[0].brand || '') : (p.product_brand || ''),
         productModel: (p.items && p.items.length > 0) ? (p.items[0].model || '') : (p.product_model || ''),
         productSerial: (p.items && p.items.length > 0) ? (p.items[0].serial || '') : (p.product_serial || p.document_number),
+        productIdType: p.product_id_type as any,
         productColor: '',
         productCondition: p.product_condition || 'USADO',
         originType: HardwareOrigin.DECLARACION_JURADA,
@@ -106,7 +98,7 @@ export const PurchaseModule: React.FC = () => {
       </div>
 
       {activeTab === 'register' && <RegisterForm onSuccess={() => { loadPurchases(); setActiveTab('pending'); }} intermediaries={intermediaries} />}
-      {activeTab === 'pending' && <PendingList purchases={purchases} onUpdate={loadPurchases} onPreview={setPreviewDoc} />}
+      {activeTab === 'pending' && <PendingList purchases={purchases} onUpdate={loadPurchases} onPreview={setPreviewDoc} onDelete={handleDelete} canDelete={canDelete} />}
       {activeTab === 'history' && <PurchaseHistory purchases={purchases} onUpdate={loadPurchases} canDelete={canDelete} onDelete={handleDelete} onViewSupport={setViewingPurchase} />}
 
       {/* VISOR DE SUSTENTACIÓN RUC 10 */}
@@ -130,7 +122,7 @@ export const PurchaseModule: React.FC = () => {
                               <div><p className="text-[9px] font-black text-slate-400 uppercase">Nombre</p><p className="font-black text-slate-900 uppercase text-xs">{viewingPurchase.providerName}</p></div>
                               <div><p className="text-[9px] font-black text-slate-400 uppercase">DNI</p><p className="font-black text-slate-900 text-xs">{viewingPurchase.providerDni}</p></div>
                               <div><p className="text-[9px] font-black text-slate-400 uppercase">Estado Civil</p><p className="font-black text-slate-900 uppercase text-xs">{viewingPurchase.providerCivilStatus}</p></div>
-                              <div><p className="text-[9px] font-black text-slate-400 uppercase">Serie Equipo</p><p className="font-black text-blue-600 uppercase text-xs font-mono">{viewingPurchase.productSerial}</p></div>
+                              <div><p className="text-[9px] font-black text-slate-400 uppercase">{viewingPurchase.productIdType === 'IMEI' ? 'IMEI' : 'Serie Equipo'}</p><p className="font-black text-blue-600 uppercase text-xs font-mono">{viewingPurchase.productSerial}</p></div>
                           </div>
                       </div>
                       <div className="md:col-span-3 bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-4">
@@ -141,7 +133,7 @@ export const PurchaseModule: React.FC = () => {
                           {viewingPurchase.items && viewingPurchase.items.length > 0 ? (
                               <div className="overflow-x-auto border rounded-xl">
                                   <table className="w-full text-xs text-left">
-                                      <thead className="bg-slate-900 text-white uppercase text-[9px] font-black"><tr><th className="px-6 py-3">Producto</th><th className="px-6 py-3">Serie</th><th className="px-6 py-3 text-right">Costo</th></tr></thead>
+                                      <thead className="bg-slate-900 text-white uppercase text-[9px] font-black"><tr><th className="px-6 py-3">Producto</th><th className="px-6 py-3">{viewingPurchase.productIdType === 'IMEI' ? 'IMEI' : 'Serie'}</th><th className="px-6 py-3 text-right">Costo</th></tr></thead>
                                       <tbody className="divide-y divide-slate-100">
                                           {viewingPurchase.items.map(it => (
                                               <tr key={it.id} className="hover:bg-slate-50">
@@ -224,6 +216,7 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
 
 const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermediary[] }> = ({ onSuccess, intermediaries }) => {
   const config = DataService.getConfig();
+  const [idType, setIdType] = useState<'SERIE' | 'IMEI'>('SERIE');
   const [formData, setFormData] = useState({
     intermediarioId: '', dni: '', nombre: '', direccion: '', estadoCivil: CivilStatus.SOLTERO,
     tipoBien: config.productCategories[0] || 'Laptop', marca: '', modelo: '', serie: '', color: '',
@@ -231,7 +224,10 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
     opDate: new Date().toISOString().split('T')[0],
   });
 
-  const handleChange = (e: any) => setFormData({...formData, [e.target.name]: e.target.value});
+  const handleChange = (e: any) => {
+    const value = e.target.value && typeof e.target.value === 'string' ? e.target.value.toUpperCase() : e.target.value;
+    setFormData({...formData, [e.target.name]: value});
+  };
   const handleDniBlur = async () => {
     const dni = (formData.dni || '').trim();
     if (!dni || dni.length < 8) return;
@@ -252,23 +248,24 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
       const totalBase = Number(formData.precioPactado);
       await BackendService.createPurchase({
           type: 'RUC10',
-          document_number: formData.serie,
-          supplier_id: null,
-          intermediary_id: Number(formData.intermediarioId) || null,
+          documentNumber: formData.serie,
+          supplierId: null,
+          intermediaryId: Number(formData.intermediarioId) || null,
           date: formData.opDate,
-          base_amount: totalBase,
-          igv_amount: 0,
-          total_amount: totalBase + Number(formData.gastoNotarial),
-          pdf_url: null,
-          provider_name: formData.nombre,
-          product_brand: formData.marca,
-          product_model: formData.modelo,
-          product_serial: formData.serie,
-          product_condition: formData.condicion,
-          seller_doc_number: formData.dni,
-          seller_full_name: formData.nombre,
-          seller_address: formData.direccion,
-          seller_civil_status: formData.estadoCivil,
+          baseAmount: totalBase,
+          igvAmount: 0,
+          totalAmount: totalBase + Number(formData.gastoNotarial),
+          pdfUrl: null,
+          providerName: formData.nombre,
+          productBrand: formData.marca,
+          productModel: formData.modelo,
+          productSerial: formData.serie,
+          productIdType: idType,
+          productCondition: formData.condicion,
+          sellerDocNumber: formData.dni,
+          sellerFullName: formData.nombre,
+          sellerAddress: formData.direccion,
+          sellerCivilStatus: formData.estadoCivil,
           items: [{ category: formData.tipoBien, brand: formData.marca, model: formData.modelo, serial: formData.serie, cost: totalBase }],
       });
       onSuccess();
@@ -279,7 +276,7 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
         <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-6">
             <h3 className="font-black text-slate-900 uppercase text-[11px] tracking-widest border-b pb-4 flex items-center gap-3">Vendedor (DNI)</h3>
             <div className="space-y-4">
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Número DNI</label><input name="dni" value={formData.dni} onChange={handleChange} onBlur={handleDniBlur} required className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-blue-500" maxLength={8} /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Número DNI</label><div className="relative"><input name="dni" value={formData.dni} onChange={handleChange} onBlur={handleDniBlur} required className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-blue-500 pr-10" maxLength={8} /><Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /></div></div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Nombre Completo</label><input name="nombre" value={formData.nombre} onChange={handleChange} required className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" /></div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Domicilio Actual</label><input name="direccion" value={formData.direccion} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" /></div>
             </div>
@@ -290,7 +287,26 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
                 <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Categoría</label><select name="tipoBien" value={formData.tipoBien} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">{config.productCategories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Marca</label><input name="marca" value={formData.marca} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label><input name="modelo" value={formData.modelo} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
-                <div className="col-span-2 bg-slate-900 p-5 rounded-2xl border-2 border-slate-700 shadow-inner"><label className="block text-[9px] font-black text-purple-400 uppercase mb-2 tracking-widest">Número de Serie (S/N)</label><input name="serie" value={formData.serie} onChange={handleChange} className="w-full bg-slate-800 border-2 border-slate-700 rounded-xl p-3 font-mono font-black text-white outline-none focus:border-purple-500 uppercase" /></div>
+                <div className="col-span-2 bg-slate-900 p-5 rounded-2xl border-2 border-slate-700 shadow-inner">
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="block text-[9px] font-black text-purple-400 uppercase tracking-widest">
+                            {idType === 'SERIE' ? 'Número de Serie (S/N)' : 'Número de IMEI'}
+                        </label>
+                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                            <button 
+                                type="button"
+                                onClick={() => setIdType('SERIE')}
+                                className={`px-3 py-1 text-[8px] font-black rounded-md transition-all ${idType === 'SERIE' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                            >SERIE</button>
+                            <button 
+                                type="button"
+                                onClick={() => setIdType('IMEI')}
+                                className={`px-3 py-1 text-[8px] font-black rounded-md transition-all ${idType === 'IMEI' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                            >IMEI</button>
+                        </div>
+                    </div>
+                    <input name="serie" value={formData.serie} onChange={handleChange} placeholder={idType === 'SERIE' ? 'INGRESE SERIE...' : 'INGRESE IMEI...'} className="w-full bg-slate-800 border-2 border-slate-700 rounded-xl p-3 font-mono font-black text-white outline-none focus:border-purple-500 uppercase" />
+                </div>
                 <div className="col-span-2">
                     <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Condición</label>
                     <select name="condicion" value={formData.condicion} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">
@@ -337,7 +353,7 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
                                         ? `${item.items[0].category || ''} ${item.items[0].brand} ${item.items[0].model}${item.items.length > 1 ? ` (+${item.items.length - 1})` : ''}`
                                         : `${item.productType ? item.productType + ' ' : ''}${item.productBrand} ${item.productModel}`}
                                 </div>
-                                <div className="font-mono text-[9px] font-black text-slate-400 uppercase">S/N: {item.items && item.items.length > 0 ? item.items[0].serial : item.productSerial}</div>
+                                <div className="font-mono text-[9px] font-black text-slate-400 uppercase">{item.productIdType === 'IMEI' ? 'IMEI' : 'S/N'}: {item.items && item.items.length > 0 ? item.items[0].serial : item.productSerial}</div>
                             </td>
                             <td className="px-8 py-5"><div className="font-black text-slate-700 uppercase text-xs">{item.providerName}</div><div className="text-[10px] font-bold text-slate-400">{item.providerDni}</div></td>
                             <td className="px-8 py-5 text-right font-black text-slate-900">S/ {(item.priceAgreed + item.costNotary).toFixed(2)}</td>
@@ -355,11 +371,12 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
     );
 };
 
-const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void }> = ({ purchases, onUpdate, onPreview }) => {
+const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void, onDelete: (id: string) => void, canDelete: boolean }> = ({ purchases, onUpdate, onPreview, onDelete, canDelete }) => {
     const pending = purchases.filter(p => p.status === PurchaseStatus.PENDING_DOCS);
     const [selected, setSelected] = useState<PurchaseEntry | null>(null);
-    const [files, setFiles] = useState({ v: null as any, c: null as any, d: null as any });
-    const [uploaded, setUploaded] = useState<{ v: boolean, c: boolean, d: boolean }>({ v: false, c: false, d: false });
+    const [files, setFiles] = useState({ v: null as string | null, c: null as string | null, d: null as string | null });
+    const [rawFiles, setRawFiles] = useState<{ v: File | null, c: File | null, d: File | null }>({ v: null, c: null, d: null });
+    const [loading, setLoading] = useState(false);
 
     const fmtDateEs = (iso?: string) => {
         const dt = iso ? new Date(iso) : new Date();
@@ -386,9 +403,10 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
         const cat = p.productType;
         const brand = p.productBrand;
         const model = p.productModel;
+        const serialLabel = p.productIdType === 'IMEI' ? 'Número de IMEI' : 'Número de serie';
         const serial = p.productSerial;
         const cond = p.productCondition;
-        return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Contrato de Compra-Venta</title><style>@page{size:A4;margin:2.2cm}body{font-family:Arial,sans-serif;font-size:13.2px;line-height:1.45;color:#000}h2{text-align:center;text-transform:uppercase;margin-bottom:10px}p{margin:5px 0;text-align:justify}.firmas{margin-top:28px;display:flex;justify-content:space-between;text-align:center;width:100%}.firma{width:48%}.linea{border-top:1px solid #000;margin:40px 0 5px 0;width:100%}.huella{font-size:12px;margin-top:4px}.footer{margin-top:15px;font-size:10.5px;color:#555;text-align:center}.space{height:100px}@media print{body{margin:0}}</style></head><body><h2>Contrato de Compra-Venta</h2><p><strong>Fecha:</strong> ${fecha}</p><p>Conste por el presente documento el <strong>Contrato de Compra-Venta</strong> que celebran, de una parte el <strong>PROPIETARIO (VENDEDOR)</strong> y, de la otra, el <strong>COMPRADOR (INTERMEDIARIO)</strong>, conforme a las cláusulas siguientes:</p><p><strong>PRIMERA: DATOS DEL VENDEDOR</strong></p><p>Nombre: ${vendedorNombre}.<br>DNI: ${vendedorDni}.<br>Dirección: ${vendedorDir}.<br>Estado civil: ${vendedorCivil}.</p><p><strong>SEGUNDA: DATOS DEL COMPRADOR (INTERMEDIARIO)</strong></p><p>Nombre: ${compradorNombre}.<br>Documento / RUC: ${compradorDoc} / ${compradorRuc}.<br>Dirección: ${compradorDir}.</p><p><strong>TERCERA: DESCRIPCIÓN DEL EQUIPO</strong></p><p>Categoría: ${cat}. Marca: ${brand}. Modelo: ${model}.<br>Número de serie: ${serial}. Condición: ${cond}.</p><p><strong>CUARTA: PRECIO Y ACUERDO COMERCIAL</strong></p><p>El precio de venta asciende a la suma de <strong>${base}</strong>, monto que el COMPRADOR declara haber cancelado en su totalidad. Los gastos notariales ascienden a ${notary}, siendo el total <strong>${total}</strong>.</p><p><strong>QUINTA: DECLARACIONES</strong></p><p>El VENDEDOR declara ser legítimo propietario del bien descrito, libre de cargas o gravámenes. El COMPRADOR declara haber revisado y aceptado el equipo conforme.</p><p><strong>SEXTA: CONFORMIDAD</strong></p><p>Leído que fue el presente contrato, ambas partes lo firman en señal de conformidad en la fecha indicada.</p><div class="space"></div><div class="firmas"><div class="firma"><div class="linea"></div><strong>VENDEDOR</strong><br>Nombre: ${vendedorNombre}<br>DNI: ${vendedorDni}<div class="huella">Huella Digital</div></div><div class="firma"><div class="linea"></div><strong>COMPRADOR / INTERMEDIARIO</strong><br>Nombre: ${compradorNombre}<br>DNI / RUC: ${compradorDoc} / ${compradorRuc}<div class="huella">Huella Digital</div></div></div></body></html>`;
+        return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Contrato de Compra-Venta</title><style>@page{size:A4;margin:2.2cm}body{font-family:Arial,sans-serif;font-size:13.2px;line-height:1.45;color:#000}h2{text-align:center;text-transform:uppercase;margin-bottom:10px}p{margin:5px 0;text-align:justify}.firmas{margin-top:28px;display:flex;justify-content:space-between;text-align:center;width:100%}.firma{width:48%}.linea{border-top:1px solid #000;margin:40px 0 5px 0;width:100%}.huella{font-size:12px;margin-top:4px}.footer{margin-top:15px;font-size:10.5px;color:#555;text-align:center}.space{height:100px}@media print{body{margin:0}}</style></head><body><h2>Contrato de Compra-Venta</h2><p><strong>Fecha:</strong> ${fecha}</p><p>Conste por el presente documento el <strong>Contrato de Compra-Venta</strong> que celebran, de una parte el <strong>PROPIETARIO (VENDEDOR)</strong> y, de la otra, el <strong>COMPRADOR (INTERMEDIARIO)</strong>, conforme a las cláusulas siguientes:</p><p><strong>PRIMERA: DATOS DEL VENDEDOR</strong></p><p>Nombre: ${vendedorNombre}.<br>DNI: ${vendedorDni}.<br>Dirección: ${vendedorDir}.<br>Estado civil: ${vendedorCivil}.</p><p><strong>SEGUNDA: DATOS DEL COMPRADOR (INTERMEDIARIO)</strong></p><p>Nombre: ${compradorNombre}.<br>Documento / RUC: ${compradorDoc} / ${compradorRuc}.<br>Dirección: ${compradorDir}.</p><p><strong>TERCERA: DESCRIPCIÓN DEL EQUIPO</strong></p><p>Categoría: ${cat}. Marca: ${brand}. Modelo: ${model}.<br>${serialLabel}: ${serial}. Condición: ${cond}.</p><p><strong>CUARTA: PRECIO Y ACUERDO COMERCIAL</strong></p><p>El precio de venta asciende a la suma de <strong>${base}</strong>, monto que el COMPRADOR declara haber cancelado en su totalidad. Los gastos notariales ascienden a ${notary}, siendo el total <strong>${total}</strong>.</p><p><strong>QUINTA: DECLARACIONES</strong></p><p>El VENDEDOR declara ser legítimo propietario del bien descrito, libre de cargas o gravámenes. El COMPRADOR declara haber revisado y aceptado el equipo conforme.</p><p><strong>SEXTA: CONFORMIDAD</strong></p><p>Leído que fue el presente contrato, ambas partes lo firman en señal de conformidad en la fecha indicada.</p><div class="space"></div><div class="firmas"><div class="firma"><div class="linea"></div><strong>VENDEDOR</strong><br>Nombre: ${vendedorNombre}<br>DNI: ${vendedorDni}<div class="huella">Huella Digital</div></div><div class="firma"><div class="linea"></div><strong>COMPRADOR / INTERMEDIARIO</strong><br>Nombre: ${compradorNombre}<br>DNI / RUC: ${compradorDoc} / ${compradorRuc}<div class="huella">Huella Digital</div></div></div></body></html>`;
     };
     const buildDjHtml = (p: PurchaseEntry) => {
         const fecha = fmtDateEs(p.date);
@@ -399,23 +417,33 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
         const cat = p.productType;
         const brand = p.productBrand;
         const model = p.productModel;
+        const serialLabel = p.productIdType === 'IMEI' ? 'Número de IMEI' : 'Número de serie';
         const serial = p.productSerial;
         const cond = p.productCondition;
         const base = curr(p.priceAgreed);
         const notary = curr(p.costNotary);
         const total = curr(p.priceAgreed + p.costNotary);
-        return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Declaración Jurada de Origen</title><style>@page{size:A4;margin:2.2cm}body{font-family:Arial,sans-serif;font-size:13.2px;line-height:1.45;color:#000}h2{text-align:center;text-transform:uppercase;margin-bottom:10px}p{margin:5px 0;text-align:justify}.firma{margin-top:35px;text-align:center}.linea{border-top:1px solid #000;margin:45px auto 6px auto;width:70%}.huella{font-size:12px;margin-top:4px}.footer{margin-top:18px;font-size:10.5px;color:#555;text-align:center}.space{height:100px}@media print{body{margin:0}}</style></head><body><h2>Declaración Jurada de Origen</h2><p><strong>Fecha:</strong> ${fecha}</p><p>Yo, <strong>${vendedorNombre}</strong>, identificado con Documento Nacional de Identidad (DNI) N.º <strong>${vendedorDni}</strong>, con domicilio en <strong>${vendedorDir}</strong>, de estado civil <strong>${vendedorCivil}</strong>, declaro bajo juramento lo siguiente:</p><p><strong>PRIMERA: DECLARACIÓN DE PROPIEDAD</strong></p><p>Declaro ser único y legítimo propietario del bien descrito en la presente declaración, el cual ha sido obtenido de manera lícita, sin vulnerar derechos de terceros y conforme a la normativa vigente.</p><p><strong>SEGUNDA: DESCRIPCIÓN DEL BIEN</strong></p><p>Categoría: ${cat}. Marca: ${brand}. Modelo: ${model}. Número de serie: ${serial}. Condición: ${cond}.</p><p><strong>TERCERA: RESPONSABILIDAD</strong></p><p>Declaro que el bien no se encuentra reportado como robado, extraviado, ni vinculado a actividades ilícitas. Asumo plena responsabilidad civil, administrativa y penal en caso de que la presente declaración resulte falsa.</p><p><strong>CUARTA: FINALIDAD</strong></p><p>La presente Declaración Jurada se emite para los fines legales que correspondan, sirviendo como constancia del origen y propiedad del bien descrito.</p><p><strong>QUINTA: CONFORMIDAD</strong></p><p>Firmo la presente declaración en señal de conformidad, en la fecha indicada.</p><div class="space"></div><div class="firma"><div class="linea"></div><strong>DECLARANTE</strong><br>Nombre: ${vendedorNombre}<br>DNI: ${vendedorDni}<div class="huella">Huella Digital</div></div></body></html>`;
+        return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Declaración Jurada de Origen</title><style>@page{size:A4;margin:2.2cm}body{font-family:Arial,sans-serif;font-size:13.2px;line-height:1.45;color:#000}h2{text-align:center;text-transform:uppercase;margin-bottom:10px}p{margin:5px 0;text-align:justify}.firma{margin-top:35px;text-align:center}.linea{border-top:1px solid #000;margin:45px auto 6px auto;width:70%}.huella{font-size:12px;margin-top:4px}.footer{margin-top:18px;font-size:10.5px;color:#555;text-align:center}.space{height:100px}@media print{body{margin:0}}</style></head><body><h2>Declaración Jurada de Origen</h2><p><strong>Fecha:</strong> ${fecha}</p><p>Yo, <strong>${vendedorNombre}</strong>, identificado con Documento Nacional de Identidad (DNI) N.º <strong>${vendedorDni}</strong>, con domicilio en <strong>${vendedorDir}</strong>, de estado civil <strong>${vendedorCivil}</strong>, declaro bajo juramento lo siguiente:</p><p><strong>PRIMERA: DECLARACIÓN DE PROPIEDAD</strong></p><p>Declaro ser único y legítimo propietario del bien descrito en la presente declaración, el cual ha sido obtenido de manera lícita, sin vulnerar derechos de terceros y conforme a la normativa vigente.</p><p><strong>SEGUNDA: DESCRIPCIÓN DEL BIEN</strong></p><p>Categoría: ${cat}. Marca: ${brand}. Modelo: ${model}. ${serialLabel}: ${serial}. Condición: ${cond}.</p><p><strong>TERCERA: RESPONSABILIDAD</strong></p><p>Declaro que el bien no se encuentra reportado como robado, extraviado, ni vinculado a actividades ilícitas. Asumo plena responsabilidad civil, administrativa y penal en caso de que la presente declaración resulte falsa.</p><p><strong>CUARTA: FINALIDAD</strong></p><p>La presente Declaración Jurada se emite para los fines legales que correspondan, sirviendo como constancia del origen y propiedad del bien descrito.</p><p><strong>QUINTA: CONFORMIDAD</strong></p><p>Firmo la presente declaración en señal de conformidad, en la fecha indicada.</p><div class="space"></div><div class="firma"><div class="linea"></div><strong>DECLARANTE</strong><br>Nombre: ${vendedorNombre}<br>DNI: ${vendedorDni}<div class="huella">Huella Digital</div></div></body></html>`;
     };
-    const attemptFinalize = async () => {
+    const handleComplete = async (e: any) => {
+        e.preventDefault();
         if(!selected) return;
-        if(!(uploaded.v && uploaded.c && uploaded.d)) return;
+        if(!rawFiles.v || !rawFiles.c || !rawFiles.d) return alert("Sustentación incompleta. Se requieren los 3 documentos.");
+        
+        setLoading(true);
         try {
+            // Upload files first
+            const resV = await BackendService.uploadPurchaseFile(selected.id, rawFiles.v, 'voucher');
+            const resC = await BackendService.uploadPurchaseFile(selected.id, rawFiles.c, 'contract');
+            const resD = await BackendService.uploadPurchaseFile(selected.id, rawFiles.d, 'dj');
+
             const totalCost = selected.priceAgreed + selected.costNotary;
             await BackendService.createProduct({
                 category: selected.productType,
                 brand: selected.productBrand,
                 model: selected.productModel,
                 serialNumber: selected.productSerial,
+                idType: selected.productIdType,
                 condition: selected.productCondition as any,
                 status: 'IN_STOCK_RUC10' as any,
                 origin: selected.originType as any,
@@ -426,19 +454,27 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                 stock: 1,
             });
             await BackendService.updatePurchase(selected.id, { status: 'COMPLETED' });
-            DataService.updatePurchase({ ...selected, status: PurchaseStatus.COMPLETED, voucherUrl: files.v, contractUrl: files.c, originProofUrl: files.d, operationDate: new Date().toISOString() });
-            setSelected(null); setFiles({v:null, c:null, d:null}); setUploaded({ v: false, c: false, d: false }); onUpdate();
+            
+            DataService.updatePurchase({ 
+                ...selected, 
+                status: PurchaseStatus.COMPLETED, 
+                voucherUrl: resV.filename, 
+                contractUrl: resC.filename, 
+                originProofUrl: resD.filename, 
+                operationDate: new Date().toISOString() 
+            });
+            
+            setSelected(null); 
+            setFiles({v:null, c:null, d:null}); 
+            setRawFiles({v:null, c:null, d:null});
+            onUpdate();
             alert('Expediente consolidado y movido a historial');
-        } catch {
+        } catch (error) {
+            console.error(error);
             alert('No se pudo consolidar en el backend. Intenta nuevamente.');
+        } finally {
+            setLoading(false);
         }
-    };
-
-    const handleComplete = async (e: any) => {
-        e.preventDefault();
-        if(!selected) return;
-        if(!(uploaded.v && uploaded.c && uploaded.d)) return alert("Sustentación incompleta. Se requieren los 3 documentos.");
-        await attemptFinalize();
     };
 
     if(pending.length === 0) return <div className="p-24 text-center text-slate-300 font-black uppercase border-4 border-dashed rounded-[3rem] bg-white flex flex-col items-center gap-4"><Package className="w-12 h-12 opacity-30"/><p className="tracking-[0.2em]">Sin expedientes RUC 10 pendientes de sustentar.</p></div>;
@@ -460,7 +496,18 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                             <h4 className="font-black text-slate-900 uppercase text-xs">{p.productBrand} {p.productModel}</h4>
                             <span className="text-[10px] font-black text-slate-400 font-mono">Serie: {p.productSerial}</span>
                         </div>
-                        <ArrowRight className={`w-5 h-5 ${selected?.id === p.id ? 'text-orange-500' : 'text-slate-200'}`} />
+                        <div className="flex items-center gap-2">
+                            {canDelete && (
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} 
+                                    className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                    title="Eliminar pendiente"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            )}
+                            <ArrowRight className={`w-5 h-5 ${selected?.id === p.id ? 'text-orange-500' : 'text-slate-200'}`} />
+                        </div>
                     </div>
                 ))}
             </div>
@@ -482,34 +529,13 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                                 onPreview({ url, kind: 'dj', title: 'Declaración Jurada de Origen', purchaseId: selected.id });
                             }} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase text-[10px] shadow-xl hover:bg-purple-600 transition-all flex items-center justify-center gap-2"><FileDigit className="w-4 h-4"/> Generar Declaración Jurada</button>
                         </div>
-                        <DocumentUpload label="Voucher de Transferencia" file={files.v} onChange={name => setFiles({...files, v: name})} onChangeFile={async (f) => {
-                            if(!selected) return;
-                            try {
-                                const res = await BackendService.uploadPurchaseFile(selected.id, f, 'voucher');
-                                setFiles(prev => ({ ...prev, v: res.filename }));
-                                setUploaded(prev => ({ ...prev, v: true }));
-                                await attemptFinalize();
-                            } catch { alert('Error al subir voucher'); }
-                        }} icon={<Camera className="w-5 h-5"/>} />
-                        <DocumentUpload label="Contrato de Compra-Venta" file={files.c} onChange={name => setFiles({...files, c: name})} onChangeFile={async (f) => {
-                            if(!selected) return;
-                            try {
-                                const res = await BackendService.uploadPurchaseFile(selected.id, f, 'contract');
-                                setFiles(prev => ({ ...prev, c: res.filename }));
-                                setUploaded(prev => ({ ...prev, c: true }));
-                                await attemptFinalize();
-                            } catch { alert('Error al subir contrato'); }
-                        }} icon={<FileText className="w-5 h-5"/>} />
-                        <DocumentUpload label="DJ Origen de Fondos" file={files.d} onChange={name => setFiles({...files, d: name})} onChangeFile={async (f) => {
-                            if(!selected) return;
-                            try {
-                                const res = await BackendService.uploadPurchaseFile(selected.id, f, 'dj');
-                                setFiles(prev => ({ ...prev, d: res.filename }));
-                                setUploaded(prev => ({ ...prev, d: true }));
-                                await attemptFinalize();
-                            } catch { alert('Error al subir DJ'); }
-                        }} icon={<FileDigit className="w-5 h-5"/>} />
-                        <button type="submit" className="w-full bg-slate-900 text-white py-6 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-2 mt-4"><Save className="w-5 h-5"/> Consolidar y Guardar Stock</button>
+                        <DocumentUpload label="Voucher de Transferencia" file={files.v} onChange={name => setFiles({...files, v: name})} onChangeFile={f => setRawFiles(prev => ({ ...prev, v: f }))} icon={<Camera className="w-5 h-5"/>} />
+                        <DocumentUpload label="Contrato de Compra-Venta" file={files.c} onChange={name => setFiles({...files, c: name})} onChangeFile={f => setRawFiles(prev => ({ ...prev, c: f }))} icon={<FileText className="w-5 h-5"/>} />
+                        <DocumentUpload label="DJ Origen de Fondos" file={files.d} onChange={name => setFiles({...files, d: name})} onChangeFile={f => setRawFiles(prev => ({ ...prev, d: f }))} icon={<FileDigit className="w-5 h-5"/>} />
+                        <button type="submit" disabled={loading} className={`w-full bg-slate-900 text-white py-6 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-2 mt-4 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            {loading ? <RefreshCw className="w-5 h-5 animate-spin"/> : <Save className="w-5 h-5"/>}
+                            {loading ? 'Subiendo y Guardando...' : 'Consolidar y Guardar Stock'}
+                        </button>
                     </form>
                 </div>
             )}

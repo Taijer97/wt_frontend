@@ -18,12 +18,13 @@ export const DirectPurchaseModule: React.FC = () => {
     const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
     const [wholesalePurchases, setWholesalePurchases] = useState<WholesalePurchaseEntry[]>([]);
     const [historySearch, setHistorySearch] = useState('');
-    const [items, setItems] = useState<{ id: string, category: string, brand: string, model: string, serial: string, cost: number, specs: string }[]>([]);
+    const [items, setItems] = useState<{ id: string, category: string, brand: string, model: string, serial: string, idType: string, cost: number, specs: string }[]>([]);
     const [newItem, setNewItem] = useState({ category: config.productCategories[0] || 'Laptop', brand: '', model: '', serial: '', cost: '', specs: '' });
     const [regularizingItem, setRegularizingItem] = useState<WholesalePurchaseEntry | null>(null);
     const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
     const [uploadFileObj, setUploadFileObj] = useState<File | null>(null);
     const [viewingSupport, setViewingSupport] = useState<WholesalePurchaseEntry | null>(null);
+    const [idType, setIdType] = useState<'SERIE' | 'IMEI'>('SERIE');
 
     const canDelete = DataService.checkPermission('purchases_ruc20', 'delete');
     const effectiveIgvRate = config.isIgvExempt ? 0 : 0.18;
@@ -65,6 +66,7 @@ export const DirectPurchaseModule: React.FC = () => {
                     brand: (it.brand || '').toUpperCase(),
                     model: (it.model || '').toUpperCase(),
                     serial: it.serial || '',
+                    idType: it.id_type || 'SERIE',
                     cost: Number(it.cost || 0),
                     specs: it.specs || ''
                 })),
@@ -85,8 +87,8 @@ export const DirectPurchaseModule: React.FC = () => {
         
         setItems([...items, { 
             id: `ITEM-${Date.now()}`, category: newItem.category,
-            brand: newItem.brand.toUpperCase(), model: newItem.model.toUpperCase(), 
-            serial: newItem.serial.toUpperCase().trim(), cost: Number(newItem.cost), specs: newItem.specs 
+            brand: newItem.brand.toUpperCase().trim(), model: newItem.model.toUpperCase().trim(), 
+            serial: newItem.serial.toUpperCase().trim(), idType: idType, cost: Number(newItem.cost), specs: newItem.specs.toUpperCase().trim()
         }]);
         
         // OPTIMIZACIÓN: Mantener valores de equipo para carga rápida, solo limpiar SERIE
@@ -106,20 +108,29 @@ export const DirectPurchaseModule: React.FC = () => {
         if (!selectedSupplierId || !docNumber || items.length === 0) return alert('Datos incompletos.');
         const supplier = suppliers.find(s => s.id === selectedSupplierId);
         if (!supplier) return;
-        const fullDocNumber = `${docSeries.toUpperCase()}-${docNumber.padStart(8, '0')}`;
+        const fullDocNumber = `${docSeries.toUpperCase().trim()}-${docNumber.trim().padStart(8, '0')}`;
         const totalBase = items.reduce((acc, i) => acc + i.cost, 0);
         await BackendService.createPurchase({
             type: 'RUC20',
-            document_number: fullDocNumber,
-            supplier_id: Number(supplier.id),
-            base_amount: totalBase,
-            igv_amount: totalBase * effectiveIgvRate,
-            total_amount: totalBase * (1 + effectiveIgvRate),
-            provider_name: supplier.razonSocial,
-            product_brand: items[0]?.brand || null,
-            product_model: items[0]?.model || null,
-            product_serial: items[0]?.serial || null,
-            items: items.map(i => ({ category: i.category, brand: i.brand, model: i.model, serial: i.serial, specs: i.specs, cost: i.cost })),
+            documentNumber: fullDocNumber,
+            supplierId: Number(supplier.id),
+            baseAmount: totalBase,
+            igvAmount: totalBase * effectiveIgvRate,
+            totalAmount: totalBase * (1 + effectiveIgvRate),
+            providerName: supplier.razonSocial,
+            productBrand: items[0]?.brand || null,
+            productModel: items[0]?.model || null,
+            productSerial: items[0]?.serial || null,
+            productIdType: items[0]?.idType || 'SERIE',
+            items: items.map(i => ({ 
+                category: i.category, 
+                brand: i.brand, 
+                model: i.model, 
+                serial: i.serial, 
+                id_type: i.idType,
+                specs: i.specs, 
+                cost: i.cost 
+            })),
           });
         alert('Compra registrada como PENDIENTE. Cargue la factura PDF para ingresar el stock.');
         setItems([]); setDocNumber(''); setSelectedSupplierId(''); setActiveTab('pending');
@@ -133,7 +144,7 @@ export const DirectPurchaseModule: React.FC = () => {
                 const res = await BackendService.uploadPurchaseFile(regularizingItem.id, uploadFileObj);
                 pdfUrl = res.url;
             }
-            await BackendService.updatePurchase(regularizingItem.id, { status: 'COMPLETED', pdf_url: pdfUrl });
+            await BackendService.updatePurchase(regularizingItem.id, { status: 'COMPLETED', pdfUrl: pdfUrl });
             for (const it of (regularizingItem.items || [])) {
                 await BackendService.createProduct({
                     category: it.category,
@@ -142,7 +153,7 @@ export const DirectPurchaseModule: React.FC = () => {
                     serialNumber: it.serial,
                     condition: 'NUEVO' as any,
                     status: 'TRANSFERIDO_EMPRESA' as any,
-                    origin: HardwareOrigin.MAYORISTA_LOCAL as any,
+                    origin: HardwareOrigin.COMPRA_MAYORISTA_LOCAL as any,
                     stock: 1,
                     purchasePrice: it.cost,
                     notaryCost: 0,
@@ -151,24 +162,24 @@ export const DirectPurchaseModule: React.FC = () => {
             }
             const supplier = suppliers.find(s => s.id === regularizingItem.supplierId);
             await BackendService.createTransaction({
-                trx_type: 'purchase',
-                document_type: 'FACTURA',
-                document_number: regularizingItem.documentNumber,
-                entity_name: regularizingItem.supplierName,
-                entity_doc_number: supplier?.ruc || '',
-                base_amount: regularizingItem.baseAmount,
-                igv_amount: regularizingItem.igvAmount,
-                total_amount: regularizingItem.totalAmount,
+                trxType: 'purchase',
+                documentType: 'FACTURA',
+                documentNumber: regularizingItem.documentNumber,
+                entityName: regularizingItem.supplierName,
+                entityDocNumber: supplier?.ruc || '',
+                baseAmount: regularizingItem.baseAmount,
+                igvAmount: regularizingItem.igvAmount,
+                totalAmount: regularizingItem.totalAmount,
                 items: (regularizingItem.items || []).map(it => ({
-                    product_id: undefined,
-                    product_name: `${it.category} - ${it.brand} ${it.model} (S/N: ${it.serial})`,
+                    productId: undefined,
+                        productName: `${it.category} - ${it.brand} ${it.model} (${it.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${it.serial})`,
                     quantity: 1,
-                    unit_price_base: it.cost,
-                    total_base: it.cost,
+                    unitPriceBase: it.cost,
+                    totalBase: it.cost,
                 })),
             });
         } catch {
-            await BackendService.updatePurchase(regularizingItem.id, { status: 'COMPLETED', pdf_url: uploadingPdf });
+            await BackendService.updatePurchase(regularizingItem.id, { status: 'COMPLETED', pdfUrl: uploadingPdf });
             for (const it of (regularizingItem.items || [])) {
                 await BackendService.createProduct({
                     category: it.category,
@@ -177,7 +188,7 @@ export const DirectPurchaseModule: React.FC = () => {
                     serialNumber: it.serial,
                     condition: 'NUEVO' as any,
                     status: 'TRANSFERIDO_EMPRESA' as any,
-                    origin: HardwareOrigin.MAYORISTA_LOCAL as any,
+                    origin: HardwareOrigin.COMPRA_MAYORISTA_LOCAL as any,
                     stock: 1,
                     purchasePrice: it.cost,
                     notaryCost: 0,
@@ -194,7 +205,7 @@ export const DirectPurchaseModule: React.FC = () => {
                 entityDocNumber: supplier?.ruc || '',
                 items: (regularizingItem.items || []).map(it => ({
                     productId: '',
-                    productName: `${it.category} - ${it.brand} ${it.model} (S/N: ${it.serial})`,
+                    productName: `${it.category} - ${it.brand} ${it.model} (${it.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${it.serial})`,
                     quantity: 1,
                     unitPriceBase: it.cost,
                     totalBase: it.cost,
@@ -250,16 +261,25 @@ export const DirectPurchaseModule: React.FC = () => {
                              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-8 flex items-center gap-3"><Barcode className="w-5 h-5 text-purple-600" /> Detalle de Equipos</h3>
                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-slate-50 rounded-2xl mb-8">
                                  <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Categoría</label><select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black uppercase text-[10px]">{config.productCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
-                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Marca</label><input value={newItem.brand} onChange={e => setNewItem({...newItem, brand: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="DELL" /></div>
-                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Modelo</label><input value={newItem.model} onChange={e => setNewItem({...newItem, model: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="VOSTRO" /></div>
-                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">N° Serie</label><input value={newItem.serial} onChange={e => setNewItem({...newItem, serial: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase font-mono" placeholder="SN-123..." /></div>
+                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Marca</label><input value={newItem.brand} onChange={e => setNewItem({...newItem, brand: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="DELL" /></div>
+                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Modelo</label><input value={newItem.model} onChange={e => setNewItem({...newItem, model: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="VOSTRO" /></div>
+                                 <div className="relative">
+                                     <div className="flex justify-between items-center mb-1">
+                                         <label className="text-[9px] font-black text-slate-500 uppercase ml-1">{idType === 'IMEI' ? 'IMEI' : 'N° Serie'}</label>
+                                         <div className="flex bg-white rounded-md border border-slate-200 p-0.5 scale-90 origin-right">
+                                             <button type="button" onClick={() => setIdType('SERIE')} className={`px-2 py-0.5 text-[7px] font-black rounded ${idType === 'SERIE' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>S/N</button>
+                                             <button type="button" onClick={() => setIdType('IMEI')} className={`px-2 py-0.5 text-[7px] font-black rounded ${idType === 'IMEI' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>IMEI</button>
+                                         </div>
+                                     </div>
+                                     <input value={newItem.serial} onChange={e => setNewItem({...newItem, serial: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase font-mono" placeholder={idType === 'IMEI' ? 'INGRESE IMEI...' : 'SN-123...'} />
+                                 </div>
                                  <div className="md:col-span-2"><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Costo Neto Unitario (S/)</label><input type="number" value={newItem.cost} onChange={e => setNewItem({...newItem, cost: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px]" placeholder="0.00" /></div>
                                  <div className="md:col-span-2 flex items-end"><button type="button" onClick={handleAddItem} className="w-full bg-slate-900 text-white p-3 rounded-lg font-black uppercase text-[10px] hover:bg-purple-600 transition-all shadow-lg active:scale-95">Agregar Item</button></div>
                              </div>
                              <div className="overflow-x-auto border rounded-xl">
                                 <table className="w-full text-xs text-left">
-                                    <thead className="bg-slate-900 text-white uppercase text-[9px] font-black"><tr><th className="px-6 py-3">Cat.</th><th className="px-6 py-3">Producto</th><th className="px-6 py-3">Serie</th><th className="px-6 py-3 text-right">Costo</th><th className="px-6 py-3 text-center">Acc.</th></tr></thead>
-                                    <tbody className="divide-y divide-slate-100">{items.map(i => (<tr key={i.id} className="hover:bg-slate-50"><td className="px-6 py-3 font-bold text-blue-600 uppercase text-[9px]">{i.category}</td><td className="px-6 py-3 font-black uppercase">{i.brand} {i.model}</td><td className="px-6 py-3 font-mono font-black">{i.serial}</td><td className="px-6 py-3 text-right font-black">S/ {i.cost.toFixed(2)}</td><td className="px-6 py-3 text-center"><button type="button" onClick={() => setItems(items.filter(x => x.id !== i.id))} className="text-red-400 hover:text-red-600 p-2"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody>
+                                    <thead className="bg-slate-900 text-white uppercase text-[9px] font-black"><tr><th className="px-6 py-3">Cat.</th><th className="px-6 py-3">Producto</th><th className="px-6 py-3">Serie / IMEI</th><th className="px-6 py-3 text-right">Costo</th><th className="px-6 py-3 text-center">Acc.</th></tr></thead>
+                                    <tbody className="divide-y divide-slate-100">{items.map(i => (<tr key={i.id} className="hover:bg-slate-50"><td className="px-6 py-3 font-bold text-blue-600 uppercase text-[9px]">{i.category}</td><td className="px-6 py-3 font-black uppercase">{i.brand} {i.model}</td><td className="px-6 py-3 font-mono font-black"><span className="text-[8px] text-slate-400 mr-1">{i.idType}:</span>{i.serial}</td><td className="px-6 py-3 text-right font-black">S/ {i.cost.toFixed(2)}</td><td className="px-6 py-3 text-center"><button type="button" onClick={() => setItems(items.filter(x => x.id !== i.id))} className="text-red-400 hover:text-red-600 p-2"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody>
                                 </table>
                              </div>
                         </div>
@@ -305,7 +325,7 @@ export const DirectPurchaseModule: React.FC = () => {
             {activeTab === 'history' && (
                 <div className="space-y-6">
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex justify-between items-center">
-                        <div className="relative w-96"><Search className="absolute left-3 top-3 text-slate-400 w-4 h-4"/><input type="text" placeholder="Filtrar proveedor o factura..." value={historySearch} onChange={e => setHistorySearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-black focus:border-emerald-500 outline-none uppercase shadow-sm" /></div>
+                        <div className="relative w-96"><Search className="absolute left-3 top-3 text-slate-400 w-4 h-4"/><input type="text" placeholder="Filtrar proveedor o factura..." value={historySearch} onChange={e => setHistorySearch(e.target.value.toUpperCase())} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-black focus:border-emerald-500 outline-none uppercase shadow-sm" /></div>
                         <div className="bg-emerald-50 px-4 py-2 rounded-xl text-[10px] font-black text-emerald-800 uppercase tracking-widest border border-emerald-100 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Compras Sustentadas: {filteredHistory.length}</div>
                     </div>
                     <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
@@ -321,7 +341,7 @@ export const DirectPurchaseModule: React.FC = () => {
                                             <td className="px-8 py-5 font-mono font-black text-blue-700 uppercase text-xs">{p.documentNumber}</td>
                                             <td className="px-8 py-5 font-black text-slate-900 uppercase text-xs">{p.supplierName}</td>
                                             <td className="px-8 py-5 text-xs font-black text-slate-700">
-                                                {p.items.length === 0 ? '-' : `${p.items[0].brand} ${p.items[0].model} — ${p.items[0].serial}${p.items.length > 1 ? ` (+${p.items.length - 1})` : ''}`}
+                                                {p.items.length === 0 ? '-' : `${p.items[0].brand} ${p.items[0].model} — ${p.items[0].idType}: ${p.items[0].serial}${p.items.length > 1 ? ` (+${p.items.length - 1})` : ''}`}
                                             </td>
                                             <td className="px-8 py-5 text-right font-black text-slate-900 text-sm">S/ {p.totalAmount.toFixed(2)}</td>
                                             <td className="px-8 py-5 text-center">

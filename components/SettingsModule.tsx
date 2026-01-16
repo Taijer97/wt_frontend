@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
-import { AppConfig, Supplier, Employee, PensionSystem, MarginType, Intermediary, UserRole, TaxRegime, CivilStatus, RoleConfig, AppModule, PermissionSet } from '../types';
+import { AppConfig, Supplier, Employee, PensionSystem, MarginType, Intermediary, UserRole, TaxRegime, CivilStatus, UserRoleConfig, AppModule, PermissionSet } from '../types';
 import { 
   Save, Plus, Trash2, Users, Truck, Settings, DollarSign, 
   Percent, UserCheck, Phone, Mail, MapPin, Briefcase, 
@@ -81,15 +81,7 @@ export const SettingsModule: React.FC = () => {
             
             try {
                 const inters = await BackendService.getIntermediaries();
-                setIntermediaries(inters.map((i: any) => ({
-                    id: String(i.id),
-                    fullName: i.name,
-                    docNumber: i.doc_number,
-                    rucNumber: i.ruc_number || '',
-                    phone: i.phone || '',
-                    email: i.email || '',
-                    address: i.address || ''
-                })));
+                setIntermediaries(inters);
             } catch { setIntermediaries(DataService.getIntermediaries()); }
             
             try {
@@ -327,19 +319,19 @@ export const SettingsModule: React.FC = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div className="md:col-span-2">
                                         <label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Razón Social</label>
-                                        <input value={config.companyName} onChange={e => setConfig({...config, companyName: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black focus:bg-white focus:border-blue-500 outline-none uppercase" />
+                                        <input value={config.companyName} onChange={e => setConfig({...config, companyName: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black focus:bg-white focus:border-blue-500 outline-none uppercase" />
                                     </div>
-                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Número de RUC</label><input value={config.companyRuc} onChange={e => setConfig({...config, companyRuc: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black font-mono" /></div>
-                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Teléfono</label><input value={config.companyPhone} onChange={e => setConfig({...config, companyPhone: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
+                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Número de RUC</label><input value={config.companyRuc} onChange={e => setConfig({...config, companyRuc: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black font-mono" /></div>
+                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Teléfono</label><input value={config.companyPhone} onChange={e => setConfig({...config, companyPhone: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
                                 </div>
                                 <div className="space-y-5">
-                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Dirección Fiscal</label><input value={config.companyAddress} onChange={e => setConfig({...config, companyAddress: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
+                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Dirección Fiscal</label><input value={config.companyAddress} onChange={e => setConfig({...config, companyAddress: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                                        <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Departamento</label><input value={config.companyDepartment} onChange={e => setConfig({...config, companyDepartment: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
-                                        <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Provincia</label><input value={config.companyProvince} onChange={e => setConfig({...config, companyProvince: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
-                                        <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Distrito</label><input value={config.companyDistrict} onChange={e => setConfig({...config, companyDistrict: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
+                                        <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Departamento</label><input value={config.companyDepartment} onChange={e => setConfig({...config, companyDepartment: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
+                                        <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Provincia</label><input value={config.companyProvince} onChange={e => setConfig({...config, companyProvince: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
+                                        <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Distrito</label><input value={config.companyDistrict} onChange={e => setConfig({...config, companyDistrict: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
                                     </div>
-                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Correo Corporativo</label><input type="email" value={config.companyEmail} onChange={e => setConfig({...config, companyEmail: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
+                                    <div><label className="block text-[10px] font-black text-slate-700 uppercase mb-2">Correo Corporativo</label><input type="email" value={config.companyEmail} onChange={e => setConfig({...config, companyEmail: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 text-slate-900 font-black" /></div>
                                 </div>
                             </div>
 
@@ -418,7 +410,7 @@ export const SettingsModule: React.FC = () => {
                                 </h3>
                                 <div className="space-y-4">
                                     <div className="flex gap-2">
-                                        <input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Nueva categoría..." className="flex-1 border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-bold" onKeyPress={e => e.key === 'Enter' && handleAddCategory()} />
+                                        <input value={newCategory} onChange={e => setNewCategory(e.target.value.toUpperCase())} placeholder="Nueva categoría..." className="flex-1 border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-bold" onKeyPress={e => e.key === 'Enter' && handleAddCategory()} />
                                         <button onClick={handleAddCategory} className="bg-slate-900 text-white px-6 rounded-xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg"><Plus className="w-5 h-5"/></button>
                                     </div>
                                     <div className="flex flex-wrap gap-2 p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner max-h-[150px] overflow-y-auto custom-scrollbar">
@@ -449,7 +441,7 @@ export const SettingsModule: React.FC = () => {
                                     {config.isIgvExempt && (
                                         <div className="space-y-3 animate-in fade-in duration-300">
                                             <label className="block text-[10px] font-black text-emerald-800 uppercase mb-2">Motivo / Base Legal (Impreso en Factura)</label>
-                                            <textarea value={config.igvExemptionReason} onChange={e => setConfig({...config, igvExemptionReason: e.target.value})} className="w-full border-2 border-emerald-200 rounded-xl p-4 bg-white text-[11px] font-black text-emerald-900 uppercase min-h-[80px]" placeholder="Ej: Operación Exonerada bajo la Ley N°..." />
+                                            <textarea value={config.igvExemptionReason} onChange={e => setConfig({...config, igvExemptionReason: e.target.value.toUpperCase()})} className="w-full border-2 border-emerald-200 rounded-xl p-4 bg-white text-[11px] font-black text-emerald-900 uppercase min-h-[80px]" placeholder="Ej: Operación Exonerada bajo la Ley N°..." />
                                         </div>
                                     )}
                                 </div>
@@ -545,7 +537,7 @@ export const SettingsModule: React.FC = () => {
                         <div className="p-6 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
                              <div className="relative max-w-md w-full">
                                 <Search className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
-                                <input type="text" placeholder={`Filtrar en ${activeTab}...`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900" />
+                                <input type="text" placeholder={`Filtrar en ${activeTab}...`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.toUpperCase())} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900 uppercase" />
                              </div>
                              <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total: {activeTab === 'proveedores' ? suppliers.length : activeTab === 'intermediarios' ? intermediaries.length : employees.length}</div>
                         </div>
@@ -559,7 +551,7 @@ export const SettingsModule: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {activeTab === 'proveedores' && suppliers.filter(s => s.razonSocial.toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
+                                {activeTab === 'proveedores' && suppliers.filter(s => (s.razonSocial || '').toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
                                     <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-8 py-5"><div className="font-black text-slate-900 uppercase text-sm">{s.razonSocial}</div><div className="text-[10px] font-mono text-blue-600 font-black">RUC: {s.ruc}</div></td>
                                         <td className="px-8 py-5">
@@ -571,7 +563,7 @@ export const SettingsModule: React.FC = () => {
                                         <td className="px-8 py-5"><div className="flex justify-center gap-3"><button onClick={() => setEditingSupplier(s)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Pencil className="w-4 h-4"/></button><button onClick={() => handleDeleteSupplier(s.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4"/></button></div></td>
                                     </tr>
                                 ))}
-                                {activeTab === 'intermediarios' && intermediaries.filter(i => i.fullName.toLowerCase().includes(searchQuery.toLowerCase())).map(i => (
+                                {activeTab === 'intermediarios' && intermediaries.filter(i => (i.fullName || '').toLowerCase().includes(searchQuery.toLowerCase())).map(i => (
                                     <tr key={i.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-8 py-5"><div className="font-black text-slate-900 uppercase text-sm">{i.fullName}</div><div className="text-[10px] font-mono text-emerald-600 font-black uppercase">DNI: {i.docNumber} {i.rucNumber ? `| RUC 10: ${i.rucNumber}` : ''}</div></td>
                                         <td className="px-8 py-5"><div className="flex items-center gap-1 text-xs font-black text-slate-700 uppercase"><Phone className="w-3 h-3 text-slate-400"/> {i.phone}</div><div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold lowercase"><Mail className="w-3 h-3 text-slate-400"/> {i.email}</div></td>
@@ -579,7 +571,7 @@ export const SettingsModule: React.FC = () => {
                                         <td className="px-8 py-5"><div className="flex justify-center gap-3"><button onClick={() => setEditingIntermediary(i)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Pencil className="w-4 h-4"/></button><button onClick={() => handleDeleteIntermediary(i.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4"/></button></div></td>
                                     </tr>
                                 ))}
-                                {activeTab === 'trabajadores' && employees.filter(e => e.fullName.toLowerCase().includes(searchQuery.toLowerCase())).map(e => (
+                                {activeTab === 'trabajadores' && employees.filter(e => (e.fullName || '').toLowerCase().includes(searchQuery.toLowerCase())).map(e => (
                                     <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-8 py-5"><div className="font-black text-slate-900 uppercase text-sm">{e.fullName}</div><div className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">DNI: {e.docNumber}</div></td>
                                         <td className="px-8 py-5"><div className="text-xs font-black text-slate-800 uppercase flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400"/> {e.phone}</div><div className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase"><MapPin className="w-3 h-3 text-slate-300"/> {e.district || '-'}, {e.department || '-'}</div></td>
@@ -602,8 +594,8 @@ export const SettingsModule: React.FC = () => {
                             <button onClick={() => setShowAddRoleModal(false)} className="hover:bg-red-600 p-2 rounded-xl transition-all"><X className="w-6 h-6"/></button>
                         </div>
                         <div className="p-8 space-y-6">
-                            <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre Comercial</label><input autoFocus value={newRoleData.label} onChange={e => setNewRoleData({...newRoleData, label: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-4 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-blue-500 outline-none uppercase text-sm" placeholder="Ej: Jefe de Ventas" /></div>
-                            <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Código ID</label><input value={newRoleData.id} onChange={e => setNewRoleData({...newRoleData, id: e.target.value.replace(/[^a-zA-Z]/g, '')})} className="w-full border-2 border-slate-100 rounded-xl p-4 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-emerald-500 outline-none uppercase font-mono text-sm" placeholder="EJ: JEFEVENTAS" /></div>
+                            <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre Comercial</label><input autoFocus value={newRoleData.label} onChange={e => setNewRoleData({...newRoleData, label: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-4 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-blue-500 outline-none uppercase text-sm" placeholder="Ej: Jefe de Ventas" /></div>
+                            <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Código ID</label><input value={newRoleData.id} onChange={e => setNewRoleData({...newRoleData, id: e.target.value.toUpperCase().replace(/[^a-zA-Z]/g, '')})} className="w-full border-2 border-slate-100 rounded-xl p-4 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-emerald-500 outline-none uppercase font-mono text-sm" placeholder="EJ: JEFEVENTAS" /></div>
                             <div className="pt-4 flex gap-4"><button onClick={() => setShowAddRoleModal(false)} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-[10px] hover:bg-slate-50 transition-all">Cancelar</button><button onClick={handleCreateRole} className="flex-[2] px-6 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-emerald-600 transition-all active:scale-95">Registrar</button></div>
                         </div>
                     </div>
@@ -669,7 +661,7 @@ const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) =
                 <div className="md:col-span-2 space-y-4">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-1">Información Fiscal</h4>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC (11 Dígitos)</label><input value={formData.ruc} onChange={e => setFormData({...formData, ruc: e.target.value})} onBlur={handleRucBlur} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-blue-500 outline-none" placeholder="20XXXXXXXXX" required maxLength={11} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC (11 Dígitos)</label><input value={formData.ruc} onChange={e => setFormData({...formData, ruc: e.target.value.toUpperCase()})} onBlur={handleRucBlur} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-blue-500 outline-none" placeholder="20XXXXXXXXX" required maxLength={11} /></div>
                         <div>
                             <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Categoría Fiscal</label>
                             <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase text-xs">
@@ -678,20 +670,20 @@ const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) =
                                 <option value="SERVICIOS">Servicios / Consultoría</option>
                             </select>
                         </div>
-                        <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Razón Social Completa</label><input value={formData.razonSocial} onChange={e => setFormData({...formData, razonSocial: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="EMPRESA S.A.C." required /></div>
+                        <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Razón Social Completa</label><input value={formData.razonSocial} onChange={e => setFormData({...formData, razonSocial: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="EMPRESA S.A.C." required /></div>
                     </div>
                 </div>
                 <div className="md:col-span-2 space-y-4 mt-2">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-1">Ubicación y Contacto</h4>
                     <div className="grid grid-cols-3 gap-3">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dpto.</label><input value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Prov.</label><input value={formData.province} onChange={e => setFormData({...formData, province: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dist.</label><input value={formData.district} onChange={e => setFormData({...formData, district: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dpto.</label><input value={formData.department} onChange={e => setFormData({...formData, department: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Prov.</label><input value={formData.province} onChange={e => setFormData({...formData, province: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dist.</label><input value={formData.district} onChange={e => setFormData({...formData, district: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
                     </div>
-                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Fiscal Exacta</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" /></div>
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Fiscal Exacta</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" /></div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Contacto</label><input value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs uppercase" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Contacto</label><input value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs uppercase" /></div>
                     </div>
                 </div>
             </div>
@@ -727,13 +719,13 @@ const IntermediaryForm: React.FC<{ initialData?: Intermediary, onSubmit: (i: Int
                         <input 
                             value={formData.docNumber} 
                             onChange={e => { 
-                                const v = e.target.value;
+                                const v = e.target.value.toUpperCase();
                                 setFormData({...formData, docNumber: v});
                                 if (v.trim().length === 8 && !loadingDni) handleFetchDni(v);
                             }} 
                             onBlur={() => handleFetchDni()} 
                             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleFetchDni(); } }} 
-                            className="flex-1 border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" 
+                            className="flex-1 border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" 
                             placeholder="8 dígitos" 
                             required 
                             maxLength={8} 
@@ -743,11 +735,11 @@ const IntermediaryForm: React.FC<{ initialData?: Intermediary, onSubmit: (i: Int
                         </button>
                     </div>
                 </div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC 10 (Opcional)</label><input value={formData.rucNumber} onChange={e => setFormData({...formData, rucNumber: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="10XXXXXXXXX" maxLength={11} /></div>
-                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre y Apellidos</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" required /></div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" required /></div>
-                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Residencia</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" required /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC 10 (Opcional)</label><input value={formData.rucNumber} onChange={e => setFormData({...formData, rucNumber: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="10XXXXXXXXX" maxLength={11} /></div>
+                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre y Apellidos</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required /></div>
+                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Residencia</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required /></div>
             </div>
             <div className="flex gap-4 pt-6"><button type="button" onClick={onCancel} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all">Cancelar</button><button type="submit" className="flex-[2] px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-emerald-700 transition-all active:scale-95">Guardar Intermediario</button></div>
         </form>
@@ -799,13 +791,13 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
                                 <input 
                                     value={formData.docNumber} 
                                     onChange={e => { 
-                                        const v = e.target.value;
+                                        const v = e.target.value.toUpperCase();
                                         setFormData({...formData, docNumber: v});
                                         if (v.trim().length === 8 && !loadingDni) handleFetchDni(v);
                                     }} 
-                                    onBlur={() => handleFetchDni()} 
+                                    onBlur={() => handleFetchDni()}  
                                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleFetchDni(); } }} 
-                                    className="flex-1 border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" 
+                                    className="flex-1 border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" 
                                     required 
                                 />
                                 <button type="button" onClick={() => handleFetchDni()} className="px-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 active:scale-95 transition">
@@ -821,11 +813,11 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
                                 ))}
                             </select>
                         </div>
-                        <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre Completo</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
+                        <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre Completo</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
                         <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2 flex items-center gap-2"> <Key className="w-3 h-3"/> Contraseña Acceso</label><input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="••••••••" required={!initialData} /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" /></div>
-                        <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
+                        <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
                     </div>
                 </div>
                 <div className="md:col-span-2 space-y-4 mt-2">

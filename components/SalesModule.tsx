@@ -11,14 +11,19 @@ export const SalesModule: React.FC = () => {
     const [docType, setDocType] = useState<'FACTURA' | 'BOLETA'>('FACTURA');
     const [clientDoc, setClientDoc] = useState('');
     const [clientName, setClientName] = useState('');
+    const [docSeries, setDocSeries] = useState('F001');
+    const [docCorrelative, setDocCorrelative] = useState('');
     const [cart, setCart] = useState<Product[]>([]);
     const [loadingRuc, setLoadingRuc] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
     const [stockRuc20, setStockRuc20] = useState<Product[]>([]);
+    const [transactions, setTransactions] = useState<any[]>([]);
 
     const config = DataService.getConfig();
 
     useEffect(() => {
         loadStock();
+        loadTransactions();
     }, []);
 
     const loadStock = async () => {
@@ -33,16 +38,57 @@ export const SalesModule: React.FC = () => {
         }
     };
 
+    const loadTransactions = async () => {
+        try {
+            const trxs = await BackendService.getTransactions();
+            setTransactions(trxs);
+        } catch {
+            setTransactions([]);
+        }
+    };
+
+    const getNextCorrelative = (trxs: any[], type: string, series: string) => {
+        // Buscamos transacciones que coincidan con el tipo (FACTURA/BOLETA) y que empiecen con la serie (ej: F001)
+        const filtered = trxs.filter(t => 
+            t.trxType === 'sale' && 
+            t.documentType === type && 
+            t.documentNumber?.split('-')[0].trim() === series.trim()
+        );
+        
+        if (filtered.length === 0) return '1';
+
+        const numbers = filtered.map(t => {
+            const parts = t.documentNumber.split('-');
+            const lastPart = parts[parts.length - 1];
+            // Limpiamos cualquier espacio y convertimos a número
+            const num = parseInt(lastPart.trim());
+            return isNaN(num) ? 0 : num;
+        });
+
+        const max = Math.max(...numbers, 0);
+        return (max + 1).toString();
+    };
+
+    useEffect(() => {
+        setDocSeries(docType === 'FACTURA' ? 'F001' : 'B001');
+    }, [docType]);
+
+    useEffect(() => {
+        if (transactions.length >= 0) {
+            setDocCorrelative(getNextCorrelative(transactions, docType, docSeries));
+        }
+    }, [docSeries, docType, transactions]);
+
     const handleConsultRuc = async () => {
         if(!clientDoc) return;
         setLoadingRuc(true);
         try {
             if (docType === 'BOLETA' && clientDoc.length === 8) {
                 const info = await fetchDni(clientDoc);
-                setClientName(info.fullName || '');
+                setClientName((info.fullName || '').toUpperCase());
             } else if (docType === 'FACTURA' && clientDoc.length === 11) {
                 const info = await fetchRuc(clientDoc);
-                setClientName(info.razonSocial || info.nombreComercial || '');
+                setClientName((info.razonSocial || info.nombreComercial || '').toUpperCase());
             } else {
                 alert('Documento inválido');
             }
@@ -93,8 +139,12 @@ export const SalesModule: React.FC = () => {
             alert('Ingrese datos del cliente');
             return;
         }
+        if(!docSeries || !docCorrelative) {
+            alert('Ingrese el número de comprobante');
+            return;
+        }
 
-        const saleInvoiceNumber = `${docType === 'FACTURA' ? 'F' : 'B'}001-${Math.floor(Math.random() * 900000 + 100000)}`;
+        const saleInvoiceNumber = `${docSeries} - ${docCorrelative}`;
 
         const transactionItems: TransactionItem[] = cart.map(p => {
              const netCost = getProductCostBase(p);
@@ -107,7 +157,7 @@ export const SalesModule: React.FC = () => {
              // MEJORA: AÑADIR CATEGORÍA al nombre del producto para auditoría en el comprobante
              return {
                 productId: p.id,
-                productName: `${p.category?.toUpperCase() || 'EQUIPO'} - ${p.brand} ${p.model} (S/N: ${p.serialNumber})`,
+                productName: `${p.category?.toUpperCase() || 'EQUIPO'} - ${p.brand} ${p.model} (${p.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${p.serialNumber})`,
                 quantity: 1,
                 unitPriceBase: baseVenta,
                 totalBase: baseVenta
@@ -120,26 +170,27 @@ export const SalesModule: React.FC = () => {
 
         try {
             await BackendService.createTransaction({
-                trx_type: 'sale',
-                document_type: docType,
-                document_number: saleInvoiceNumber,
-                entity_name: clientName,
-                entity_doc_number: clientDoc,
-                base_amount: totalBaseAmount,
-                igv_amount: totalIgvAmount,
-                total_amount: totalFinalAmount,
+                trxType: 'sale',
+                documentType: docType,
+                documentNumber: saleInvoiceNumber,
+                entityName: clientName,
+                entityDocNumber: clientDoc,
+                baseAmount: totalBaseAmount,
+                igvAmount: totalIgvAmount,
+                totalAmount: totalFinalAmount,
                 items: transactionItems.map(i => ({
-                    product_id: i.productId,
-                    product_name: i.productName,
+                    productId: i.productId,
+                    productName: i.productName,
                     quantity: i.quantity,
-                    unit_price_base: i.unitPriceBase,
-                    total_base: i.totalBase,
+                    unitPriceBase: i.unitPriceBase,
+                    totalBase: i.totalBase,
                 })),
             });
             for (const p of cart) {
                 await BackendService.updateProduct(p.id, { status: ProductStatus.SOLD });
             }
             alert(`Venta procesada con éxito.\nComprobante: ${saleInvoiceNumber}`);
+            loadTransactions();
         } catch {
             DataService.addTransaction('sale', {
                 id: Date.now().toString(),
@@ -157,6 +208,7 @@ export const SalesModule: React.FC = () => {
                 exemptionReason: config.isIgvExempt ? config.igvExemptionReason : undefined
             });
             alert(`Venta procesada en modo local.\nComprobante: ${saleInvoiceNumber}`);
+            loadTransactions();
         }
         setCart([]);
         setClientDoc('');
@@ -195,7 +247,7 @@ export const SalesModule: React.FC = () => {
                                 <input 
                                     type="text" 
                                     value={clientDoc}
-                                    onChange={(e) => setClientDoc(e.target.value)}
+                                    onChange={(e) => setClientDoc(e.target.value.toUpperCase())}
                                     onBlur={() => { 
                                         if ((docType === 'BOLETA' && clientDoc.length === 8) || (docType === 'FACTURA' && clientDoc.length === 11)) handleConsultRuc(); 
                                     }}
@@ -220,6 +272,29 @@ export const SalesModule: React.FC = () => {
                                 readOnly
                                 className="w-full bg-slate-50 border-2 border-gray-200 rounded-lg p-2.5 text-slate-900 font-black uppercase text-sm"
                                 placeholder="Auto-completado..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 shadow-inner">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">Serie del Comprobante</label>
+                            <input 
+                                type="text" 
+                                value={docSeries}
+                                onChange={(e) => setDocSeries(e.target.value.toUpperCase())}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 font-black focus:border-purple-500 bg-white text-slate-900 uppercase text-sm"
+                                placeholder="F001"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">Número Correlativo</label>
+                            <input 
+                                type="text" 
+                                value={docCorrelative}
+                                onChange={(e) => setDocCorrelative(e.target.value.toUpperCase())}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 font-black focus:border-purple-500 bg-white text-slate-900 uppercase text-sm"
+                                placeholder="1"
                             />
                         </div>
                     </div>
@@ -254,7 +329,7 @@ export const SalesModule: React.FC = () => {
                                         <div className="space-y-1">
                                             <p className="font-black text-slate-900 uppercase text-sm">{prod.category?.toUpperCase()} {prod.brand} {prod.model}</p>
                                             <p className="text-xs text-slate-600 font-bold italic">{prod.specs}</p>
-                                            <p className="text-[10px] font-black text-slate-500 font-mono tracking-widest uppercase">S/N: {prod.serialNumber}</p>
+                                            <p className="text-[10px] font-black text-slate-500 font-mono tracking-widest uppercase">{prod.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {prod.serialNumber}</p>
                                             <div className="mt-3">
                                                 <span className="text-lg font-black text-purple-900">S/ {suggestedPriceTotal.toLocaleString('es-PE', {minimumFractionDigits: 2})}</span>
                                             </div>
@@ -291,7 +366,7 @@ export const SalesModule: React.FC = () => {
                                 <li key={item.id} className="flex justify-between items-start text-sm pb-3 border-b border-gray-100 last:border-0">
                                     <div className="flex-1 pr-2">
                                         <span className="block font-black text-slate-900 uppercase text-xs">{item.category?.toUpperCase()} {item.brand} {item.model}</span>
-                                        <span className="text-[10px] text-slate-500 font-black font-mono tracking-tighter">S/N: {item.serialNumber}</span>
+                                        <span className="text-[10px] text-slate-500 font-black font-mono tracking-tighter">{item.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {item.serialNumber}</span>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="font-black text-slate-900">S/ {calculateSalePriceTotal(getProductCostBase(item)).toFixed(2)}</span>

@@ -95,8 +95,8 @@ export type AppModule =
   | 'accounting' 
   | 'settings';
 
-export interface RoleConfig {
-  id?: number;
+export interface UserRoleConfig {
+  id?: string;
   role: UserRole;
   label: string;
   permissions: Record<AppModule, PermissionSet>;
@@ -167,13 +167,14 @@ export interface AppConfig {
   ruc20TaxRegime: TaxRegime;
   ruc10DeclarationDay: number; 
   ruc20DeclarationDay: number;
-  roleConfigs: RoleConfig[]; 
+  roleConfigs: UserRoleConfig[]; 
 }
 
 export interface Product {
   id: string;
   category?: string;
   serialNumber?: string;
+  idType?: 'SERIE' | 'IMEI';
   brand?: string;
   model?: string;
   specs?: string;
@@ -223,6 +224,7 @@ export interface Transaction {
   sunatStatus?: 'ACEPTADO' | 'PENDIENTE' | 'RECHAZADO' | 'ANULADO';
   pdfUrl?: string;
   xmlUrl?: string;
+  voucherUrl?: string;
   isIgvExempt?: boolean;
   exemptionReason?: string;
   trxType?: 'sale' | 'purchase' | 'transfer';
@@ -263,6 +265,7 @@ export interface WholesalePurchaseEntry {
     brand: string, 
     model: string, 
     serial: string, 
+    idType: 'SERIE' | 'IMEI',
     cost: number, 
     specs: string 
   }[];
@@ -277,10 +280,6 @@ export interface PurchaseEntry {
   date: string;
   status: PurchaseStatus;
   intermediaryId?: string; 
-  intermediaryName?: string;
-  intermediaryDocNumber?: string;
-  intermediaryRucNumber?: string;
-  intermediaryAddress?: string;
   providerDni: string;
   providerName: string;
   providerAddress: string;
@@ -290,6 +289,7 @@ export interface PurchaseEntry {
   productBrand: string;
   productModel: string;
   productSerial: string;
+  productIdType?: 'SERIE' | 'IMEI';
   productColor: string;
   productCondition: 'USADO' | 'REACONDICIONADO' | 'NUEVO';
   originType: HardwareOrigin;
@@ -302,7 +302,19 @@ export interface PurchaseEntry {
   operationDate?: string;
   contractUrl?: string;
   voucherUrl?: string;
-  items?: { id: string, category?: string, brand: string, model: string, serial: string, cost: number, specs?: string }[];
+  intermediaryName?: string;
+  intermediaryDocNumber?: string;
+  intermediaryRucNumber?: string;
+  intermediaryAddress?: string;
+  items?: {
+    id: string;
+    category: string;
+    brand: string;
+    model: string;
+    serial: string;
+    cost: number;
+    specs: string;
+  }[];
 }
 
 export interface SaleEntry {

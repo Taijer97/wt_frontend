@@ -97,31 +97,31 @@ export const Register: React.FC<RegisterProps> = ({ onBack }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre Completo</label>
-                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
+                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value.toUpperCase()})} />
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">DNI (Usuario)</label>
-                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.docNumber} onChange={e => setFormData({...formData, docNumber: e.target.value})} />
+                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.docNumber} onChange={e => setFormData({...formData, docNumber: e.target.value.toUpperCase()})} />
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Celular</label>
                 <div className="relative">
                     <Phone className="absolute left-3 top-2.5 w-4 h-4 text-gray-400"/>
-                    <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 pl-9 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                    <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 pl-9 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} />
                 </div>
             </div>
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Correo Electrónico</label>
                 <div className="relative">
                     <Mail className="absolute left-3 top-2.5 w-4 h-4 text-gray-400"/>
-                    <input required type="email" className="w-full border border-gray-300 rounded-lg p-2 pl-9 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                    <input required type="email" className="w-full border border-gray-300 rounded-lg p-2 pl-9 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value.toUpperCase()})} />
                 </div>
             </div>
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Dirección Actual</label>
                 <div className="relative">
                     <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-gray-400"/>
-                    <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 pl-9 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                    <input required type="text" className="w-full border border-gray-300 rounded-lg p-2 pl-9 focus:ring-2 focus:ring-emerald-500 bg-white text-gray-900" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} />
                 </div>
             </div>
             <div>

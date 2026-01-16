@@ -37,11 +37,19 @@ export const SalesHistoryModule: React.FC = () => {
         window.print();
     };
 
-    const handleDelete = (id: string, e: React.MouseEvent) => {
+    const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (confirm('¿Está seguro de ANULAR esta venta? Los productos volverán al stock disponible.')) {
-            DataService.deleteTransaction('sale', id);
-            refresh();
+            try {
+                await BackendService.deleteTransaction(id);
+                refresh();
+                alert('Venta anulada con éxito.');
+            } catch (err: any) {
+                console.error("Error al eliminar venta:", err);
+                DataService.deleteTransaction('sale', id);
+                refresh();
+                alert('Venta eliminada localmente.');
+            }
         }
     };
 
@@ -72,7 +80,7 @@ export const SalesHistoryModule: React.FC = () => {
                         placeholder="Buscar cliente o número..." 
                         className="w-full pl-10 pr-4 py-2.5 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-purple-500 bg-slate-50 text-slate-900"
                         value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
+                        onChange={e => setSearchTerm(e.target.value.toUpperCase())}
                     />
                 </div>
             </div>

@@ -96,7 +96,16 @@ export const DataService = {
         const products = DataService.getProducts();
         trans.items.forEach(item => {
             const p = products.find(prod => prod.id === item.productId);
-            if (p) p.status = ProductStatus.TRANSFERRED_RUC20;
+            if (p) {
+                // Restaurar stock
+                p.stock = (p.stock || 0) + item.quantity;
+                // Restaurar estado: si tiene info de transferencia vuelve a RUC 20, sino a RUC 10
+                if (p.transferDocNumber) {
+                    p.status = ProductStatus.TRANSFERRED_RUC20;
+                } else {
+                    p.status = ProductStatus.IN_STOCK_RUC10;
+                }
+            }
         });
         localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(products));
     }

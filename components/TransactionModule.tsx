@@ -148,7 +148,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({ type }) =>
                   type="text" 
                   className="w-full border-gray-300 rounded-md shadow-sm p-2 border bg-white text-gray-900"
                   value={entityName}
-                  onChange={e => setEntityName(e.target.value)}
+                  onChange={e => setEntityName(e.target.value.toUpperCase())}
                 />
                </div>
                <div>
@@ -158,7 +158,7 @@ export const TransactionModule: React.FC<TransactionModuleProps> = ({ type }) =>
                   type="text" 
                   className="w-full border-gray-300 rounded-md shadow-sm p-2 border bg-white text-gray-900"
                   value={entityDoc}
-                  onChange={e => setEntityDoc(e.target.value)}
+                  onChange={e => setEntityDoc(e.target.value.toUpperCase())}
                 />
                </div>
             </div>

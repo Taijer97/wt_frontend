@@ -50,15 +50,77 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const isDev = !!(import.meta as any).env?.DEV;
-    const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://100.116.47.110:8000';
-    const wsUrl = isDev ? `ws://${window.location.host}/ws/updates` : `${String(base).replace(/^http/, 'ws')}/ws/updates`;
-    const ws = new WebSocket(wsUrl);
-    ws.onopen = () => console.log('WS conectado');
-    ws.onmessage = (ev) => { console.log('WS mensaje:', ev.data); setWsMsg(String(ev.data)); setTimeout(() => setWsMsg(null), 5000); };
-    ws.onerror = (e) => console.error('WS error', e);
-    return () => { try { ws.close(); } catch { /* noop */ } };
-  }, []);
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout;
+    let heartbeatInterval: NodeJS.Timeout;
+    let inactivityTimeout: NodeJS.Timeout;
+
+    const connect = () => {
+      const isDev = !!(import.meta as any).env?.DEV;
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://100.116.47.110:8000';
+      const wsUrl = isDev ? `ws://${window.location.host}/ws/updates` : `${String(base).replace(/^http/, 'ws')}/ws/updates`;
+      
+      console.log('Iniciando conexión WS...');
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('WS conectado');
+        // Iniciar latido (heartbeat) cada 30 segundos para mantener la conexión viva
+        heartbeatInterval = setInterval(() => {
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, 30000);
+      };
+
+      ws.onmessage = (ev) => {
+        if (ev.data === 'pong') return; // Ignorar respuestas de latido
+        console.log('WS mensaje:', ev.data);
+        setWsMsg(String(ev.data));
+        setTimeout(() => setWsMsg(null), 5000);
+        resetInactivityTimeout(); // Resetear inactividad al recibir mensajes relevantes
+      };
+
+      ws.onerror = (e) => {
+        console.error('WS error', e);
+      };
+
+      ws.onclose = (e) => {
+        console.log('WS cerrado, intentando reconectar en 3s...', e.reason);
+        clearInterval(heartbeatInterval);
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+    };
+
+    const resetInactivityTimeout = () => {
+      clearTimeout(inactivityTimeout);
+      // Si el usuario está logueado, protegemos por inactividad (ej. 30 min)
+      if (currentUser) {
+        inactivityTimeout = setTimeout(() => {
+          console.log('Inactividad detectada, cerrando sesión por seguridad.');
+          handleLogout();
+        }, 30 * 60 * 1000); // 30 minutos
+      }
+    };
+
+    // Escuchar eventos del usuario para resetear inactividad
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    activityEvents.forEach(event => window.addEventListener(event, resetInactivityTimeout));
+
+    connect();
+    resetInactivityTimeout();
+
+    return () => {
+      activityEvents.forEach(event => window.removeEventListener(event, resetInactivityTimeout));
+      clearInterval(heartbeatInterval);
+      clearTimeout(reconnectTimeout);
+      clearTimeout(inactivityTimeout);
+      if (ws) {
+        ws.onclose = null; // Evitar reconexión al desmontar
+        ws.close();
+      }
+    };
+  }, [currentUser]);
 
   const syncConfig = async () => {
       try {

@@ -40,7 +40,7 @@ export const ExpensesModule: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = Number(formData.amount);
-    const description = `${formData.beneficiary || ''} ${formData.description || ''}`.trim();
+    const description = `${formData.beneficiary || ''} ${formData.description || ''}`.toUpperCase().trim();
     await BackendService.createExpense({
       description,
       amount,
@@ -65,9 +65,9 @@ export const ExpensesModule: React.FC = () => {
           const res = await BackendService.uploadExpenseFile(sustentandoItem.id, sustentoObj);
           url = res.url;
         }
-        await BackendService.updateExpense(sustentandoItem.id, { status: 'COMPLETED', pdf_url: url || sustentoFile });
+        await BackendService.updateExpense(sustentandoItem.id, { status: 'COMPLETED', pdfUrl: url || sustentoFile });
       } catch {
-        await BackendService.updateExpense(sustentandoItem.id, { status: 'COMPLETED', pdf_url: sustentoFile });
+        await BackendService.updateExpense(sustentandoItem.id, { status: 'COMPLETED', pdfUrl: sustentoFile });
       }
       alert('Gasto sustentado correctamente para auditoría.');
       setSustentandoItem(null); setSustentoFile(null); setSustentoObj(null); await loadExpenses();
@@ -102,8 +102,8 @@ export const ExpensesModule: React.FC = () => {
                         <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Fecha</label><input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase" required /></div>
                         <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Categoría</label><select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase">{Object.values(ExpenseCategory).map(cat => (<option key={cat} value={cat}>{cat.replace('_', ' ')}</option>))}</select></div>
                     </div>
-                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Descripción del Gasto</label><input value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase" placeholder="Ej: Pago de Internet" required /></div>
-                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Proveedor / Beneficiario</label><input value={formData.beneficiary} onChange={e => setFormData({...formData, beneficiary: e.target.value})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase" placeholder="Ej: Movistar" required /></div>
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Descripción del Gasto</label><input value={formData.description} onChange={e => setFormData({...formData, description: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase" placeholder="Ej: Pago de Internet" required /></div>
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Proveedor / Beneficiario</label><input value={formData.beneficiary} onChange={e => setFormData({...formData, beneficiary: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase" placeholder="Ej: Movistar" required /></div>
                     <div className="grid grid-cols-2 gap-4">
                         <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Monto (S/)</label><input type="number" step="0.01" value={formData.amount} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-white text-blue-600 shadow-sm" required /></div>
                         <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Medio Pago</label><select value={formData.paymentMethod} onChange={e => setFormData({...formData, paymentMethod: e.target.value as any})} className="w-full border-2 border-slate-50 rounded-xl p-3 text-sm font-black bg-slate-50 uppercase"><option value={PaymentMethod.TRANSFERENCIA}>Transferencia</option><option value={PaymentMethod.CONTADO}>Efectivo</option></select></div>
