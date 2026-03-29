@@ -18,20 +18,95 @@ export const DirectPurchaseModule: React.FC = () => {
     const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
     const [wholesalePurchases, setWholesalePurchases] = useState<WholesalePurchaseEntry[]>([]);
     const [historySearch, setHistorySearch] = useState('');
-    const [items, setItems] = useState<{ id: string, category: string, brand: string, model: string, serial: string, idType: string, cost: number, specs: string }[]>([]);
-    const [newItem, setNewItem] = useState({ category: config.productCategories[0] || 'Laptop', brand: '', model: '', serial: '', cost: '', specs: '' });
+    const [items, setItems] = useState<{ id: string, category: string, brand: string, model: string, capacity: string, serial: string, idType: string, cost: number, specs: string }[]>([]);
+    const [newItem, setNewItem] = useState({ category: '', brand: '', model: '', capacity: '', serial: '', cost: '', specs: '' });
     const [regularizingItem, setRegularizingItem] = useState<WholesalePurchaseEntry | null>(null);
+
+    const catalog = config.productCatalog || [];
+    const categories = Array.from(new Set(catalog.map(c => c.category))).sort();
+    
+    // Auto-set initial category
+    useEffect(() => {
+        if (!newItem.category && categories.length > 0) {
+            setNewItem(prev => ({ ...prev, category: categories[0] }));
+        } else if (!newItem.category && config.productCategories.length > 0) {
+            setNewItem(prev => ({ ...prev, category: config.productCategories[0] }));
+        }
+    }, [categories, config.productCategories, newItem.category]);
+
+    const brandsForCat = Array.from(new Set(catalog.filter(c => c.category === newItem.category).map(c => c.brand))).sort();
+    const modelsForBrand = catalog.filter(c => c.category === newItem.category && c.brand === newItem.brand).map(c => c.model).sort();
+    const capacitiesForModel = catalog.filter(c => c.category === newItem.category && c.brand === newItem.brand && c.model === newItem.model && c.capacity).map(c => c.capacity as string).sort();
+
+    // Auto-select brand/model/capacity
+    useEffect(() => {
+        if (brandsForCat.length > 0 && !brandsForCat.includes(newItem.brand)) {
+            setNewItem(prev => ({ ...prev, brand: brandsForCat[0] }));
+        }
+    }, [newItem.category, brandsForCat, newItem.brand]);
+
+    useEffect(() => {
+        if (modelsForBrand.length > 0 && !modelsForBrand.includes(newItem.model)) {
+            setNewItem(prev => ({ ...prev, model: modelsForBrand[0] }));
+        }
+    }, [newItem.brand, modelsForBrand, newItem.model]);
+
+    useEffect(() => {
+        if (capacitiesForModel.length > 0 && !capacitiesForModel.includes(newItem.capacity)) {
+            setNewItem(prev => ({ ...prev, capacity: capacitiesForModel[0] }));
+        } else if (capacitiesForModel.length === 0 && newItem.capacity) {
+            setNewItem(prev => ({ ...prev, capacity: '' }));
+        }
+    }, [newItem.model, newItem.brand, newItem.category, capacitiesForModel, newItem.capacity]);
     const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
     const [uploadFileObj, setUploadFileObj] = useState<File | null>(null);
     const [viewingSupport, setViewingSupport] = useState<WholesalePurchaseEntry | null>(null);
     const [idType, setIdType] = useState<'SERIE' | 'IMEI'>('SERIE');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isLoadingData, setIsLoadingData] = useState(true);
 
     const canDelete = DataService.checkPermission('purchases_ruc20', 'delete');
     const effectiveIgvRate = config.isIgvExempt ? 0 : 0.18;
 
     useEffect(() => { loadData(); }, [activeTab]);
 
-    const loadData = async () => {
+    const loadData = async (force = false) => {
+        if (wholesalePurchases.length === 0 || force) {
+            setIsLoadingData(true);
+        } else {
+            // Silently refresh without showing skeleton
+            BackendService.getPurchases({ type: 'RUC20', limit: 500 }).then(list => {
+                const mapped: WholesalePurchaseEntry[] = list.map((p: any) => ({
+                    id: String(p.id),
+                    date: p.date,
+                    supplierId: String(p.supplier_id || ''),
+                    supplierName: p.provider_name || '',
+                    supplierRuc: '',
+                    documentNumber: p.document_number,
+                    status: p.status === 'COMPLETED' ? PurchaseStatus.COMPLETED : PurchaseStatus.PENDING_DOCS,
+                    items: (p.items || []).map((it: any) => ({
+                        id: String(it.id),
+                        category: it.category || '',
+                        brand: (it.brand || '').toUpperCase(),
+                        model: (it.model || '').toUpperCase(),
+                        serial: it.serial || '',
+                        idType: it.id_type || 'SERIE',
+                        cost: Number(it.cost || 0),
+                        specs: it.specs || ''
+                    })),
+                    baseAmount: p.base_amount,
+                    igvAmount: p.igv_amount,
+                    totalAmount: p.total_amount,
+                    pdfUrl: BackendService.resolveUrl(p.pdf_url || undefined),
+                }));
+                // Solo actualizamos el estado si es diferente para evitar re-renders
+                if (JSON.stringify(mapped) !== JSON.stringify(wholesalePurchases)) {
+                    setWholesalePurchases(mapped);
+                }
+            }).catch(() => {});
+            return;
+        }
+
         try {
             const sups = await BackendService.getSuppliers();
             setSuppliers(sups.map((s: any) => ({
@@ -78,6 +153,8 @@ export const DirectPurchaseModule: React.FC = () => {
             setWholesalePurchases(mapped);
         } catch {
             setWholesalePurchases(DataService.getWholesalePurchases());
+        } finally {
+            setIsLoadingData(false);
         }
     };
 
@@ -85,9 +162,11 @@ export const DirectPurchaseModule: React.FC = () => {
         if(!newItem.category || !newItem.brand || !newItem.model || !newItem.serial || !newItem.cost) return alert('Complete todos los campos del producto.');
         if (items.some(i => i.serial === newItem.serial.toUpperCase().trim())) return alert('Serie duplicada en lista.');
         
+        const modelWithCap = newItem.capacity ? `${newItem.model.toUpperCase().trim()} ${newItem.capacity.toUpperCase().trim()}` : newItem.model.toUpperCase().trim();
+        
         setItems([...items, { 
             id: `ITEM-${Date.now()}`, category: newItem.category,
-            brand: newItem.brand.toUpperCase().trim(), model: newItem.model.toUpperCase().trim(), 
+            brand: newItem.brand.toUpperCase().trim(), model: modelWithCap, capacity: newItem.capacity,
             serial: newItem.serial.toUpperCase().trim(), idType: idType, cost: Number(newItem.cost), specs: newItem.specs.toUpperCase().trim()
         }]);
         
@@ -99,7 +178,7 @@ export const DirectPurchaseModule: React.FC = () => {
         e.stopPropagation();
         if (confirm('¿Anular esta compra mayorista? El sistema verificará que ningún equipo haya sido vendido.')) {
             await BackendService.deletePurchase(id);
-            await loadData();
+            await loadData(true);
         }
     };
 
@@ -110,8 +189,11 @@ export const DirectPurchaseModule: React.FC = () => {
         if (!supplier) return;
         const fullDocNumber = `${docSeries.toUpperCase().trim()}-${docNumber.trim().padStart(8, '0')}`;
         const totalBase = items.reduce((acc, i) => acc + i.cost, 0);
-        await BackendService.createPurchase({
-            type: 'RUC20',
+        
+        setIsProcessing(true);
+        try {
+            await BackendService.createPurchase({
+                type: 'RUC20',
             documentNumber: fullDocNumber,
             supplierId: Number(supplier.id),
             baseAmount: totalBase,
@@ -121,23 +203,30 @@ export const DirectPurchaseModule: React.FC = () => {
             productBrand: items[0]?.brand || null,
             productModel: items[0]?.model || null,
             productSerial: items[0]?.serial || null,
-            productIdType: items[0]?.idType || 'SERIE',
+            productIdType: (items[0]?.idType || 'SERIE'),
             items: items.map(i => ({ 
                 category: i.category, 
                 brand: i.brand, 
                 model: i.model, 
                 serial: i.serial, 
-                id_type: i.idType,
+                idType: i.idType,
                 specs: i.specs, 
                 cost: i.cost 
-            })),
-          });
-        alert('Compra registrada como PENDIENTE. Cargue la factura PDF para ingresar el stock.');
-        setItems([]); setDocNumber(''); setSelectedSupplierId(''); setActiveTab('pending');
+            })) as any,
+          } as any);
+            alert('Compra registrada como PENDIENTE. Cargue la factura PDF para ingresar el stock.');
+            setItems([]); setDocNumber(''); setSelectedSupplierId(''); setActiveTab('pending');
+            loadData(true);
+        } catch {
+            alert('Error al registrar compra mayorista');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleRegularize = async () => {
         if (!regularizingItem || !uploadingPdf) return;
+        setIsProcessing(true);
         try {
             let pdfUrl = regularizingItem.pdfUrl || undefined;
             if (uploadFileObj) {
@@ -220,6 +309,7 @@ export const DirectPurchaseModule: React.FC = () => {
         alert('Stock ingresado y compra sustentada correctamente.');
         setRegularizingItem(null); setUploadingPdf(null); setUploadFileObj(null); await loadData();
         setActiveTab('history');
+        setIsProcessing(false);
     };
 
     const pendingPurchases = wholesalePurchases.filter(p => p.status === PurchaseStatus.PENDING_DOCS);
@@ -260,9 +350,46 @@ export const DirectPurchaseModule: React.FC = () => {
                         <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
                              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-8 flex items-center gap-3"><Barcode className="w-5 h-5 text-purple-600" /> Detalle de Equipos</h3>
                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-slate-50 rounded-2xl mb-8">
-                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Categoría</label><select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black uppercase text-[10px]">{config.productCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
-                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Marca</label><input value={newItem.brand} onChange={e => setNewItem({...newItem, brand: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="DELL" /></div>
-                                 <div><label className="text-[9px] font-black text-slate-500 uppercase ml-1">Modelo</label><input value={newItem.model} onChange={e => setNewItem({...newItem, model: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="VOSTRO" /></div>
+                                 <div>
+                                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Producto</label>
+                                     {categories.length > 0 ? (
+                                         <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black uppercase text-[10px]">
+                                             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                         </select>
+                                     ) : (
+                                         <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black uppercase text-[10px]">
+                                             {config.productCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                         </select>
+                                     )}
+                                 </div>
+                                 <div>
+                                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Marca</label>
+                                     {brandsForCat.length > 0 ? (
+                                         <select value={newItem.brand} onChange={e => setNewItem({...newItem, brand: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase">
+                                             {brandsForCat.map(b => <option key={b} value={b}>{b}</option>)}
+                                         </select>
+                                     ) : (
+                                         <input value={newItem.brand} onChange={e => setNewItem({...newItem, brand: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="DELL" />
+                                     )}
+                                 </div>
+                                 <div>
+                                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Modelo</label>
+                                     {modelsForBrand.length > 0 ? (
+                                         <select value={newItem.model} onChange={e => setNewItem({...newItem, model: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase">
+                                             {modelsForBrand.map(m => <option key={m} value={m}>{m}</option>)}
+                                         </select>
+                                     ) : (
+                                         <input value={newItem.model} onChange={e => setNewItem({...newItem, model: e.target.value.toUpperCase()})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase" placeholder="VOSTRO" />
+                                     )}
+                                 </div>
+                                 {capacitiesForModel.length > 0 && (
+                                     <div>
+                                         <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Capacidad</label>
+                                         <select value={newItem.capacity} onChange={e => setNewItem({...newItem, capacity: e.target.value})} className="w-full p-2.5 rounded-lg border-2 border-white bg-white font-black text-[10px] uppercase">
+                                             {capacitiesForModel.map(c => <option key={c} value={c}>{c}</option>)}
+                                         </select>
+                                     </div>
+                                 )}
                                  <div className="relative">
                                      <div className="flex justify-between items-center mb-1">
                                          <label className="text-[9px] font-black text-slate-500 uppercase ml-1">{idType === 'IMEI' ? 'IMEI' : 'N° Serie'}</label>
@@ -292,7 +419,16 @@ export const DirectPurchaseModule: React.FC = () => {
                                 <div className="flex justify-between text-xs font-bold uppercase"><span className="text-emerald-500">IGV ({effectiveIgvRate*100}%)</span><span className="font-black text-emerald-400">+ S/ {(items.reduce((a,b)=>a+b.cost,0)*effectiveIgvRate).toFixed(2)}</span></div>
                                 <div className="pt-4 border-t border-slate-800 flex justify-between items-center"><span className="text-[10px] font-black text-slate-400 uppercase">Total Documento</span><span className="text-2xl font-black">S/ {(items.reduce((a,b)=>a+b.cost,0)*(1+effectiveIgvRate)).toFixed(2)}</span></div>
                              </div>
-                             <button type="submit" disabled={items.length===0} className="w-full py-5 bg-emerald-500 text-slate-900 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-emerald-400 active:scale-95 disabled:opacity-50 transition-all">Registrar como Pendiente</button>
+                             <button 
+                                type="submit" 
+                                disabled={items.length===0 || isProcessing} 
+                                className="w-full py-5 bg-emerald-500 text-slate-900 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-emerald-400 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                             >
+                                {isProcessing ? (
+                                    <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                ) : null}
+                                {isProcessing ? 'Procesando...' : 'Registrar como Pendiente'}
+                             </button>
                         </div>
                     </div>
                 </form>
@@ -300,7 +436,23 @@ export const DirectPurchaseModule: React.FC = () => {
 
             {activeTab === 'pending' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {pendingPurchases.length === 0 ? (
+                    {isLoadingData ? (
+                        Array.from({ length: 3 }).map((_, i) => (
+                            <div key={`skeleton-pending-${i}`} className="bg-white p-8 rounded-3xl shadow-sm border-2 border-slate-100 animate-pulse">
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="w-12 h-12 bg-slate-200 rounded-2xl"></div>
+                                    <div className="w-24 h-6 bg-slate-200 rounded-full"></div>
+                                </div>
+                                <div className="w-3/4 h-4 bg-slate-200 rounded mb-2"></div>
+                                <div className="w-1/2 h-3 bg-slate-200 rounded mb-6"></div>
+                                <div className="bg-slate-50 p-4 rounded-xl flex justify-between items-center mb-8 border border-slate-100">
+                                    <div className="w-16 h-3 bg-slate-200 rounded"></div>
+                                    <div className="w-20 h-5 bg-slate-200 rounded"></div>
+                                </div>
+                                <div className="w-full h-12 bg-slate-200 rounded-xl"></div>
+                            </div>
+                        ))
+                    ) : pendingPurchases.length === 0 ? (
                         <div className="col-span-full p-20 text-center text-slate-300 font-black uppercase tracking-widest border-4 border-dashed rounded-[3rem] bg-white italic">No hay compras por sustentar.</div>
                     ) : (
                         pendingPurchases.map(p => (
@@ -332,7 +484,24 @@ export const DirectPurchaseModule: React.FC = () => {
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest"><tr><th className="px-8 py-5">Emisión</th><th className="px-8 py-5">N° Factura</th><th className="px-8 py-5">Proveedor</th><th className="px-8 py-5">Equipo / Serie</th><th className="px-8 py-5 text-right">Monto Total</th><th className="px-8 py-5 text-center">Auditoría</th></tr></thead>
                             <tbody className="divide-y divide-slate-50">
-                                {filteredHistory.length === 0 ? (
+                                {isLoadingData ? (
+                                    // SKELETON LOADER HISTORIAL RUC 20
+                                    Array.from({ length: 3 }).map((_, i) => (
+                                        <tr key={`skeleton-h20-${i}`} className="animate-pulse">
+                                            <td className="px-6 py-4"><div className="h-4 w-20 bg-slate-200 rounded"></div></td>
+                                            <td className="px-6 py-4"><div className="h-4 w-32 bg-slate-200 rounded"></div></td>
+                                            <td className="px-6 py-4"><div className="h-4 w-40 bg-slate-200 rounded"></div></td>
+                                            <td className="px-6 py-4"><div className="h-6 w-16 bg-slate-200 rounded-full mx-auto"></div></td>
+                                            <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-slate-200 rounded ml-auto"></div></td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex justify-center gap-2">
+                                                    <div className="h-8 w-8 bg-slate-200 rounded-xl"></div>
+                                                    <div className="h-8 w-8 bg-slate-200 rounded-xl"></div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : filteredHistory.length === 0 ? (
                                     <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">No se encontraron registros.</td></tr>
                                 ) : (
                                     filteredHistory.map(p => (
@@ -341,7 +510,7 @@ export const DirectPurchaseModule: React.FC = () => {
                                             <td className="px-8 py-5 font-mono font-black text-blue-700 uppercase text-xs">{p.documentNumber}</td>
                                             <td className="px-8 py-5 font-black text-slate-900 uppercase text-xs">{p.supplierName}</td>
                                             <td className="px-8 py-5 text-xs font-black text-slate-700">
-                                                {p.items.length === 0 ? '-' : `${p.items[0].brand} ${p.items[0].model} — ${p.items[0].idType}: ${p.items[0].serial}${p.items.length > 1 ? ` (+${p.items.length - 1})` : ''}`}
+                                                {p.items.length === 0 ? '-' : `${p.items[0].category || ''} ${p.items[0].brand} ${p.items[0].model} — ${p.items[0].idType}: ${p.items[0].serial}${p.items.length > 1 ? ` (+${p.items.length - 1})` : ''}`}
                                             </td>
                                             <td className="px-8 py-5 text-right font-black text-slate-900 text-sm">S/ {p.totalAmount.toFixed(2)}</td>
                                             <td className="px-8 py-5 text-center">
@@ -393,7 +562,7 @@ export const DirectPurchaseModule: React.FC = () => {
                                                 <tbody className="divide-y divide-slate-100">
                                                     {viewingSupport.items.map(it => (
                                                         <tr key={it.id} className="hover:bg-white">
-                                                            <td className="px-6 py-3 font-black uppercase text-slate-900">{(it.brand || '').toUpperCase()} {(it.model || '').toUpperCase()}</td>
+                                                            <td className="px-6 py-3 font-black uppercase text-slate-900">{(it.category || '').toUpperCase()} {(it.brand || '').toUpperCase()} {(it.model || '').toUpperCase()}</td>
                                                             <td className="px-6 py-3 font-mono font-black text-blue-700">{it.serial}</td>
                                                             <td className="px-6 py-3 text-right font-black text-slate-900">S/ {(it.cost || 0).toFixed(2)}</td>
                                                         </tr>
@@ -437,7 +606,18 @@ export const DirectPurchaseModule: React.FC = () => {
                                     />
                                 </label>
                             </div>
-                             <button onClick={handleRegularize} disabled={!uploadingPdf} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-2xl hover:bg-emerald-600 disabled:opacity-50 transition-all flex items-center justify-center gap-3 active:scale-95"><CheckCircle className="w-6 h-6 text-emerald-400"/> Finalizar Ingreso Stock</button>
+                             <button 
+                                onClick={handleRegularize} 
+                                disabled={!uploadingPdf || isProcessing} 
+                                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-2xl hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-3 active:scale-95"
+                             >
+                                {isProcessing ? (
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <CheckCircle className="w-6 h-6 text-emerald-400"/>
+                                )}
+                                {isProcessing ? 'Procesando...' : 'Finalizar Ingreso Stock'}
+                             </button>
                         </div>
                     </div>
                 </div>

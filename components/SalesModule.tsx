@@ -1,11 +1,33 @@
-
 import React, { useState, useEffect } from 'react';
-import { Search, ShoppingCart, Trash2, Printer, User, Building, PackageX, Tag, ShieldCheck } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Printer, User, Building, PackageX, Tag, ShieldCheck, CheckCircle, X } from 'lucide-react';
 import { Product, ProductStatus, TransactionItem } from '../types';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
 import { fetchDni } from '../services/dniService';
 import { fetchRuc } from '../services/rucService';
+
+// --- CUSTOM ALERT COMPONENT (Same style as others) ---
+const CustomAlert = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className="fixed top-6 right-6 z-[200] animate-in slide-in-from-right-8 fade-in duration-300">
+            <div className={`bg-[#202020] rounded-xl shadow-2xl flex items-center gap-3 p-4 pr-12 min-w-[280px] border border-white/10 relative overflow-hidden`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${type === 'success' ? 'bg-[#4ade80]' : 'bg-red-500'}`}>
+                    {type === 'success' ? <CheckCircle className="w-4 h-4 text-[#202020]" /> : <X className="w-4 h-4 text-[#202020]" />}
+                </div>
+                <p className="text-white font-medium text-sm">{message}</p>
+                <button onClick={onClose} className="absolute right-4 text-slate-400 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+};
+// ------------------------------
 
 export const SalesModule: React.FC = () => {
     const [docType, setDocType] = useState<'FACTURA' | 'BOLETA'>('FACTURA');
@@ -13,34 +35,53 @@ export const SalesModule: React.FC = () => {
     const [clientName, setClientName] = useState('');
     const [docSeries, setDocSeries] = useState('F001');
     const [docCorrelative, setDocCorrelative] = useState('');
-    const [cart, setCart] = useState<Product[]>([]);
+    const [cart, setCart] = useState<(Product & { finalPrice: number })[]>([]);
     const [loadingRuc, setLoadingRuc] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [stockRuc20, setStockRuc20] = useState<Product[]>([]);
     const [transactions, setTransactions] = useState<any[]>([]);
+    const [alertInfo, setAlertInfo] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isLoadingData, setIsLoadingData] = useState(true);
+
+    const showAlert = (message: string, type: 'success' | 'error') => setAlertInfo({ message, type });
 
     const config = DataService.getConfig();
 
     useEffect(() => {
-        loadStock();
-        loadTransactions();
+        loadStock(false);
+        loadTransactions(false);
+        
+        // Background update for better UX (Micro-update)
+        const bgUpdate = async () => {
+            await Promise.all([
+                loadStock(true),
+                loadTransactions(true)
+            ]);
+        };
+        setTimeout(bgUpdate, 100);
     }, []);
 
-    const loadStock = async () => {
+    const loadStock = async (forceRefresh = false) => {
+        if (!forceRefresh) setIsLoadingData(true);
         try {
-            const allProducts = await BackendService.getProducts();
+            // @ts-ignore - BackendService supports forceRefresh
+            const allProducts = await BackendService.getProducts(forceRefresh);
             const available = allProducts.filter(p => p.status === ProductStatus.TRANSFERRED_RUC20);
             setStockRuc20(available);
         } catch {
             const allProducts = DataService.getProducts();
             const available = allProducts.filter(p => p.status === ProductStatus.TRANSFERRED_RUC20);
             setStockRuc20(available);
+        } finally {
+            if (!forceRefresh) setIsLoadingData(false);
         }
     };
 
-    const loadTransactions = async () => {
+    const loadTransactions = async (forceRefresh = false) => {
         try {
-            const trxs = await BackendService.getTransactions();
+            // @ts-ignore - BackendService supports forceRefresh
+            const trxs = await BackendService.getTransactions(undefined, forceRefresh);
             setTransactions(trxs);
         } catch {
             setTransactions([]);
@@ -90,10 +131,10 @@ export const SalesModule: React.FC = () => {
                 const info = await fetchRuc(clientDoc);
                 setClientName((info.razonSocial || info.nombreComercial || '').toUpperCase());
             } else {
-                alert('Documento inválido');
+                showAlert('Documento inválido', 'error');
             }
         } catch {
-            alert('No se pudo consultar los datos del documento');
+            showAlert('No se pudo consultar los datos del documento', 'error');
         } finally {
             setLoadingRuc(false);
         }
@@ -101,8 +142,16 @@ export const SalesModule: React.FC = () => {
 
     const addToCart = (product: Product) => {
         if (!cart.find(p => p.id === product.id)) {
-            setCart([...cart, product]);
+            const netCost = getProductCostBase(product);
+            const defaultPrice = calculateSalePriceTotal(netCost);
+            // Redondear el precio sugerido inicial a 2 decimales
+            const roundedPrice = Math.round(defaultPrice * 100) / 100;
+            setCart([...cart, { ...product, finalPrice: roundedPrice }]);
         }
+    };
+
+    const updateCartItemPrice = (id: string, newPrice: number) => {
+        setCart(cart.map(item => item.id === id ? { ...item, finalPrice: newPrice } : item));
     };
 
     const removeFromCart = (id: string) => {
@@ -129,26 +178,25 @@ export const SalesModule: React.FC = () => {
         return baseImponibleVenta * (1 + config.igvRate);
     };
 
-    const totalCart = cart.reduce((acc, p) => acc + calculateSalePriceTotal(getProductCostBase(p)), 0);
+    const totalCart = cart.reduce((acc, p) => acc + p.finalPrice, 0);
     const subtotal = config.isIgvExempt ? totalCart : (totalCart / (1 + config.igvRate));
     const igv = config.isIgvExempt ? 0 : (totalCart - subtotal);
 
     const handleProcessSale = async () => {
         if(cart.length === 0) return;
         if(!clientDoc || !clientName) {
-            alert('Ingrese datos del cliente');
+            showAlert('Ingrese datos del cliente', 'error');
             return;
         }
         if(!docSeries || !docCorrelative) {
-            alert('Ingrese el número de comprobante');
+            showAlert('Ingrese el número de comprobante', 'error');
             return;
         }
 
         const saleInvoiceNumber = `${docSeries} - ${docCorrelative}`;
 
         const transactionItems: TransactionItem[] = cart.map(p => {
-             const netCost = getProductCostBase(p);
-             const salePriceTotal = calculateSalePriceTotal(netCost);
+             const salePriceTotal = p.finalPrice;
              const baseVenta = config.isIgvExempt ? salePriceTotal : (salePriceTotal / (1 + config.igvRate));
              
              const updatedProduct = { ...p, status: ProductStatus.SOLD };
@@ -168,6 +216,7 @@ export const SalesModule: React.FC = () => {
         const totalIgvAmount = config.isIgvExempt ? 0 : (totalBaseAmount * config.igvRate);
         const totalFinalAmount = totalBaseAmount + totalIgvAmount;
 
+        setIsProcessing(true);
         try {
             await BackendService.createTransaction({
                 trxType: 'sale',
@@ -189,7 +238,7 @@ export const SalesModule: React.FC = () => {
             for (const p of cart) {
                 await BackendService.updateProduct(p.id, { status: ProductStatus.SOLD });
             }
-            alert(`Venta procesada con éxito.\nComprobante: ${saleInvoiceNumber}`);
+            showAlert(`Venta procesada: ${saleInvoiceNumber}`, 'success');
             loadTransactions();
         } catch {
             DataService.addTransaction('sale', {
@@ -207,17 +256,20 @@ export const SalesModule: React.FC = () => {
                 isIgvExempt: config.isIgvExempt,
                 exemptionReason: config.isIgvExempt ? config.igvExemptionReason : undefined
             });
-            alert(`Venta procesada en modo local.\nComprobante: ${saleInvoiceNumber}`);
+            showAlert(`Venta procesada en modo local: ${saleInvoiceNumber}`, 'success');
             loadTransactions();
+        } finally {
+            setIsProcessing(false);
+            setCart([]);
+            setClientDoc('');
+            setClientName('');
+            loadStock();
         }
-        setCart([]);
-        setClientDoc('');
-        setClientName('');
-        loadStock();
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in relative">
+            {alertInfo && <CustomAlert message={alertInfo.message} type={alertInfo.type} onClose={() => setAlertInfo(null)} />}
             <div className="lg:col-span-2 space-y-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
@@ -313,7 +365,21 @@ export const SalesModule: React.FC = () => {
                         </div>
                     </div>
                     
-                    {stockRuc20.length === 0 ? (
+                    {isLoadingData ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={`skeleton-stock-${i}`} className="border-2 rounded-2xl p-5 bg-white shadow-sm animate-pulse flex justify-between items-center">
+                                    <div className="space-y-3 w-full">
+                                        <div className="h-4 w-3/4 bg-slate-200 rounded"></div>
+                                        <div className="h-3 w-1/2 bg-slate-200 rounded"></div>
+                                        <div className="h-3 w-1/3 bg-slate-200 rounded"></div>
+                                        <div className="h-6 w-24 bg-slate-200 rounded mt-4"></div>
+                                    </div>
+                                    <div className="h-8 w-20 bg-slate-200 rounded-xl shrink-0 ml-4"></div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : stockRuc20.length === 0 ? (
                         <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                             <PackageX className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                             <p className="text-slate-600 font-bold">No hay stock disponible para facturar.</p>
@@ -369,7 +435,17 @@ export const SalesModule: React.FC = () => {
                                         <span className="text-[10px] text-slate-500 font-black font-mono tracking-tighter">{item.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {item.serialNumber}</span>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <span className="font-black text-slate-900">S/ {calculateSalePriceTotal(getProductCostBase(item)).toFixed(2)}</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[10px] font-bold text-slate-400">S/</span>
+                                            <input 
+                                                type="number" 
+                                                step="0.01"
+                                                value={item.finalPrice}
+                                                onChange={(e) => updateCartItemPrice(item.id, parseFloat(e.target.value) || 0)}
+                                                onBlur={(e) => updateCartItemPrice(item.id, Math.round((parseFloat(e.target.value) || 0) * 100) / 100)}
+                                                className="w-24 p-1 text-right font-black text-slate-900 border border-gray-200 rounded focus:border-purple-500 text-sm"
+                                            />
+                                        </div>
                                         <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-700 transition-colors">
                                             <Trash2 className="w-4 h-4" />
                                         </button>
@@ -397,10 +473,15 @@ export const SalesModule: React.FC = () => {
 
                         <button 
                             onClick={handleProcessSale}
-                            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 uppercase tracking-widest text-xs"
+                            disabled={isProcessing}
+                            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 uppercase tracking-widest text-xs disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                            <Printer className="w-5 h-5" />
-                            Emitir Comprobante
+                            {isProcessing ? (
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <Printer className="w-5 h-5" />
+                            )}
+                            {isProcessing ? 'Procesando...' : 'Emitir Comprobante'}
                         </button>
                     </div>
                 )}

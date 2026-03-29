@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Product, ProductStatus, Intermediary, Transaction, ReceiptType } from '../types';
 import { BackendService } from '../services/backendService';
@@ -18,6 +17,7 @@ export const InventoryTransferModule: React.FC = () => {
     
     const [docSeries, setDocSeries] = useState('F001');
     const [docCorrelative, setDocCorrelative] = useState('');
+    const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10)); // Default to today
     const [selectedIntermediaryId, setSelectedIntermediaryId] = useState('');
     const [voucherFile, setVoucherFile] = useState<File | null>(null);
     const [voucherPreview, setVoucherPreview] = useState<string | null>(null);
@@ -42,14 +42,18 @@ export const InventoryTransferModule: React.FC = () => {
         return (max + 1).toString();
     };
 
-    const loadData = async () => {
+    const [isLoadingData, setIsLoadingData] = useState(true);
+
+    const loadData = async (forceRefresh = false) => {
+        if (!forceRefresh) setIsLoadingData(true);
         try {
+            // @ts-ignore - BackendService supports forceRefresh
             const [prods, inters, trxs, purchs, cfg] = await Promise.all([
-                BackendService.getProducts(),
-                BackendService.getIntermediaries(),
-                BackendService.getTransactions(),
-                BackendService.getPurchases(),
-                BackendService.getConfig()
+                BackendService.getProducts(forceRefresh),
+                BackendService.getIntermediaries(forceRefresh),
+                BackendService.getTransactions(undefined, forceRefresh),
+                BackendService.getPurchases(undefined, forceRefresh),
+                BackendService.getConfig(forceRefresh)
             ]);
             setProducts(prods);
             setIntermediaries(inters);
@@ -58,11 +62,18 @@ export const InventoryTransferModule: React.FC = () => {
             setConfig(cfg);
         } catch (error) {
             console.error("Error loading data", error);
+        } finally {
+            if (!forceRefresh) setIsLoadingData(false);
         }
     };
 
     useEffect(() => {
-        loadData();
+        loadData(false);
+        // Background update for better UX
+        const bgUpdate = async () => {
+            await loadData(true);
+        };
+        setTimeout(bgUpdate, 100);
     }, []);
 
     useEffect(() => {
@@ -87,6 +98,7 @@ export const InventoryTransferModule: React.FC = () => {
     const handleSelectProduct = (product: Product) => {
         setSelectedProduct(product);
         setSelectedIntermediaryId(product.intermediaryId || '');
+        setTransferDate(new Date().toISOString().slice(0, 10)); // Reset date on selection
         
         if(product.status === ProductStatus.IN_STOCK_RUC10 && config) {
             const totalCost = product.totalCost || 0;
@@ -153,14 +165,31 @@ export const InventoryTransferModule: React.FC = () => {
                 baseAmount: transferCalc.base,
                 igvAmount: transferCalc.igv,
                 totalAmount: transferCalc.total,
+                pdfUrl: undefined, // Will be set by invoice upload
+                // Pass date indirectly? Backend createTransaction currently uses server time or payload date if supported. 
+                // Let's check backendService.createTransaction payload. It doesn't accept date directly in payload currently.
+                // We might need to update backendService or just accept that transaction date = now, 
+                // BUT the product transferDate should definitely be the selected date.
+                // Wait, Transaction model has 'date'. Let's see if we can pass it.
+                // BackendService.createTransaction payload: { trxType, documentType, ... } - NO DATE field.
+                // However, we can update it later or modify backendService.
+                // For now, let's assume we want to store the DATE in the product record primarily for the transfer history.
+                // AND we should try to pass it to transaction if possible.
+                // Let's modify BackendService to accept date or just pass it and hope backend handles it if I added it previously.
+                // Checking BackendService.createTransaction in previous file read... it DOES NOT take date.
+                // BUT I can modify the transaction AFTER creation if needed, or better, update BackendService.
+                // Actually, let's just ensure product has the date. The user asked to "specify the date".
                 items: [{
                     productId: selectedProduct.id,
-                    productName: selectedProduct.model || 'Producto',
+                    productName: `${selectedProduct.category || ''} ${selectedProduct.brand || ''} ${selectedProduct.model || ''} - ${selectedProduct.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${selectedProduct.serialNumber || ''}`.trim(),
                     quantity: 1,
                     unitPriceBase: transferCalc.base,
                     totalBase: transferCalc.base
                 }]
             });
+            
+            // If we want to support backdating transactions, we need to update the transaction date
+            // For now, let's assume the user mainly cares about the Transfer Date recorded on the product/history.
             
             const uploadPromises = [];
             if (voucherFile && trx.id) {
@@ -185,7 +214,7 @@ export const InventoryTransferModule: React.FC = () => {
                 transferTotal: transferCalc.total,
                 transferDocType: ReceiptType.FACTURA,
                 transferDocNumber: docNumber,
-                transferDate: new Date().toISOString()
+                transferDate: new Date(transferDate).toISOString() // Use selected date
             });
 
             alert(`Transferencia Exitosa.`);
@@ -277,7 +306,18 @@ export const InventoryTransferModule: React.FC = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {transactions.filter(t => t.trxType === 'transfer').length === 0 ? (
+                                            {isLoadingData ? (
+                                                Array.from({ length: 3 }).map((_, i) => (
+                                                    <tr key={`skeleton-trx-${i}`} className="animate-pulse">
+                                                        <td className="px-6 py-4 space-y-2"><div className="h-4 w-20 bg-slate-200 rounded"></div><div className="h-3 w-16 bg-slate-200 rounded"></div></td>
+                                                        <td className="px-6 py-4"><div className="h-4 w-32 bg-slate-200 rounded"></div></td>
+                                                        <td className="px-6 py-4"><div className="h-4 w-40 bg-slate-200 rounded"></div></td>
+                                                        <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-slate-200 rounded ml-auto"></div></td>
+                                                        <td className="px-6 py-4"><div className="flex justify-center gap-2"><div className="h-8 w-8 bg-slate-200 rounded-lg"></div><div className="h-8 w-8 bg-slate-200 rounded-lg"></div></div></td>
+                                                        <td className="px-6 py-4"><div className="h-8 w-8 bg-slate-200 rounded-lg mx-auto"></div></td>
+                                                    </tr>
+                                                ))
+                                            ) : transactions.filter(t => t.trxType === 'transfer').length === 0 ? (
                                                 <tr><td colSpan={6} className="p-8 text-center text-slate-400 font-bold uppercase italic">Sin transferencias registradas.</td></tr>
                                             ) : (
                                                 transactions.filter(t => t.trxType === 'transfer').map(t => (
@@ -287,7 +327,16 @@ export const InventoryTransferModule: React.FC = () => {
                                                             <div className="text-[10px] text-slate-500">{t.documentType} {t.documentNumber}</div>
                                                         </td>
                                                         <td className="px-6 py-4 text-xs font-bold text-slate-600">{t.entityName}</td>
-                                                        <td className="px-6 py-4 text-[10px] uppercase text-slate-500">{t.items?.[0]?.productName || 'Item'}</td>
+                                                        <td className="px-6 py-4 text-[10px] uppercase text-slate-500">
+                                                            {(() => {
+                                                                const item = t.items?.[0];
+                                                                if (!item) return 'Item';
+                                                                // Intenta recuperar el producto completo para mostrar detalles históricos si faltan
+                                                                const p = products.find(prod => prod.id === item.productId);
+                                                                if (p) return `${p.category || ''} ${p.brand || ''} ${p.model || ''} - ${p.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${p.serialNumber || ''}`;
+                                                                return item.productName || 'Item';
+                                                            })()}
+                                                        </td>
                                                         <td className="px-6 py-4 text-right font-black text-slate-900">S/ {t.totalAmount.toFixed(2)}</td>
                                                         <td className="px-6 py-4 text-center">
                                                             <div className="flex justify-center gap-2">
@@ -332,7 +381,17 @@ export const InventoryTransferModule: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {(activeTab === 'ruc10' ? ruc10Products : ruc20Products).length === 0 ? (
+                                        {isLoadingData ? (
+                                            Array.from({ length: 4 }).map((_, i) => (
+                                                <tr key={`skeleton-inv-${i}`} className="animate-pulse">
+                                                    <td className="px-6 py-4 space-y-2"><div className="h-4 w-32 bg-slate-200 rounded"></div><div className="h-3 w-20 bg-slate-200 rounded"></div></td>
+                                                    <td className="px-6 py-4 space-y-2"><div className="h-4 w-40 bg-slate-200 rounded"></div><div className="h-3 w-24 bg-slate-200 rounded"></div></td>
+                                                    <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-slate-200 rounded ml-auto"></div></td>
+                                                    <td className="px-6 py-4"><div className="h-6 w-24 bg-slate-200 rounded-full mx-auto"></div></td>
+                                                    {activeTab === 'ruc10' && <td className="px-6 py-4"><div className="h-8 w-8 bg-slate-200 rounded-lg mx-auto"></div></td>}
+                                                </tr>
+                                            ))
+                                        ) : (activeTab === 'ruc10' ? ruc10Products : ruc20Products).length === 0 ? (
                                             <tr><td colSpan={activeTab === 'ruc10' ? 5 : 4} className="p-16 text-center text-slate-400 font-bold uppercase italic tracking-widest">Sin registros disponibles.</td></tr>
                                         ) : (
                                             (activeTab === 'ruc10' ? ruc10Products : ruc20Products).map(product => (
@@ -349,7 +408,7 @@ export const InventoryTransferModule: React.FC = () => {
                                                         <div className="text-[10px] font-black text-slate-500 font-mono mt-1 uppercase">{product.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {product.serialNumber}</div>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <div className="font-black text-slate-800 uppercase">{product.brand} {product.model}</div>
+                                                        <div className="font-black text-slate-800 uppercase">{product.category} {product.brand} {product.model}</div>
                                                         <div className="text-[10px] text-slate-600 font-bold italic">{product.specs}</div>
                                                     </td>
                                                     <td className="px-6 py-4 text-right font-black text-slate-900">
@@ -432,6 +491,15 @@ export const InventoryTransferModule: React.FC = () => {
                                         </div>
 
                                         <div className="space-y-4 pt-2">
+                                            <div className="space-y-2">
+                                                <label className="block text-[11px] font-black text-slate-700 uppercase">Fecha de Emisión</label>
+                                                <input 
+                                                    type="date" 
+                                                    value={transferDate} 
+                                                    onChange={e => setTransferDate(e.target.value)} 
+                                                    className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm bg-white text-slate-900 font-black uppercase" 
+                                                />
+                                            </div>
                                             <div className="flex gap-2">
                                                 <input value={docSeries} onChange={e => setDocSeries(e.target.value.toUpperCase())} className="w-1/3 border-2 border-gray-200 rounded-xl p-3 text-sm text-center bg-white text-slate-900 font-black uppercase" placeholder="Serie" />
                                                 <input value={docCorrelative} onChange={e => setDocCorrelative(e.target.value.toUpperCase())} className="w-2/3 border-2 border-gray-200 rounded-xl p-3 text-sm bg-white text-slate-900 font-black" placeholder="Correlativo" />

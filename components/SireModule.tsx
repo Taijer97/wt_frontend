@@ -12,7 +12,9 @@ import {
   Search, 
   Info,
   Table as TableIcon,
-  Calculator
+  Calculator,
+  Package,
+  X
 } from 'lucide-react';
 
 export const SireModule: React.FC = () => {
@@ -20,6 +22,9 @@ export const SireModule: React.FC = () => {
     const [selectedPeriod, setSelectedPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [data, setData] = useState<Transaction[]>([]);
     const [summary, setSummary] = useState({ base: 0, igv: 0, total: 0, count: 0 });
+    // State to hold products for detailed lookup
+    const [productsCache, setProductsCache] = useState<any[]>([]);
+    const [viewingDetails, setViewingDetails] = useState<Transaction | null>(null);
 
     useEffect(() => {
         loadPeriodData();
@@ -40,10 +45,14 @@ export const SireModule: React.FC = () => {
                 setData(filtered);
                 setSummary(totals);
             } else {
-                const [purchases, transfers] = await Promise.all([
+                const [purchases, transfers, products] = await Promise.all([
                     BackendService.getTransactions('purchase'),
                     BackendService.getTransactions('transfer'),
+                    BackendService.getProducts()
                 ]);
+                setProductsCache(products);
+
+                // Filtramos solo compras de RUC20 (Mayoristas) y transferencias si corresponde
                 const combined = [...purchases, ...transfers];
                 const filtered = combined.filter(t => (t.date || '').slice(0, 7) === period);
                 const totals = filtered.reduce((acc, curr) => ({
@@ -76,31 +85,127 @@ export const SireModule: React.FC = () => {
         const lines = data.map(t => {
             const [serie, numero] = String(t.documentNumber || '').split('-');
             const tipo = mapDoc(t.documentType as any);
-            const fecha = new Date(t.date).toISOString().slice(0, 10);
+            const fecha = new Date(t.date).toISOString().slice(0, 10).split('-').reverse().join('/'); // DD/MM/YYYY
             const base = Number(t.baseAmount || 0).toFixed(2);
             const igv = Number(t.igvAmount || 0).toFixed(2);
             const total = Number(t.totalAmount || 0).toFixed(2);
-            return [
-                periodCompact,
-                tipo,
-                serie || '',
-                numero || '',
-                fecha,
-                t.entityDocNumber || '',
-                t.entityName || '',
-                base,
-                igv,
-                total,
-                'PEN'
-            ].join('|');
+            
+            // Estructura oficial SIRE (simplificada para RVIE/RCE)
+            // RUC|RAZON_SOCIAL|PERIODO|CAR|FECHA_EMISION|FECHA_VCTO|TIPO_CP|SERIE|NUMERO|...
+            // Ajustamos según el formato solicitado por el usuario
+            
+            // Construir CAR SUNAT ficticio si no existe (RUC + TIPO + SERIE + NUMERO)
+            const rucEmisor = "20615233731"; // RUC de la empresa (hardcoded o desde config)
+            const car = `${rucEmisor}${tipo}${serie}${String(numero).padStart(10, '0')}`;
+            
+            // Campos vacíos según estructura
+            const empty = "";
+            
+            if (activeTab === 'ventas') {
+                // Estructura RVIE (Ventas)
+                return [
+                    rucEmisor, // RUC Emisor
+                    "COMERCIAL URBANTECH-ATALAYA E.I.R.L.", // Razón Social Emisor
+                    periodCompact, // Periodo
+                    car, // CAR SUNAT
+                    fecha, // Fecha Emisión
+                    empty, // Fecha Vcto
+                    tipo, // Tipo CP
+                    serie, // Serie
+                    Number(numero), // Nro CP
+                    empty, // Nro Final
+                    t.entityDocNumber?.length === 11 ? "6" : "1", // Tipo Doc Identidad (6=RUC, 1=DNI)
+                    t.entityDocNumber || "", // Nro Doc Identidad
+                    t.entityName || "", // Razón Social Cliente
+                    "0", // Valor Facturado Exportación
+                    base, // BI Gravada
+                    "0", // Dscto BI
+                    igv, // IGV
+                    "0", // Dscto IGV
+                    "0", // Mto Exonerado
+                    "0", // Mto Inafecto
+                    "0", // ISC
+                    "0", // BI Grav IVAP
+                    "0", // IVAP
+                    "0", // ICBPER
+                    "0", // Otros Tributos
+                    total, // Total CP
+                    "PEN", // Moneda
+                    "1.000", // Tipo Cambio
+                    empty, // Fecha Emisión Doc Modificado
+                    empty, // Tipo CP Modificado
+                    empty, // Serie CP Modificado
+                    empty, // Nro CP Modificado
+                    empty, // ID Proyecto
+                    empty, // Tipo Nota
+                    "1", // Est. Comp
+                    "0", // Valor FOB
+                    "0", // Valor OP Gratuitas
+                    "0101", // Tipo Operación
+                    empty, // DAM / CP
+                    empty  // CLU
+                ].join('|');
+            } else {
+                // Estructura RCE (Compras)
+                // RUC|RAZON_SOCIAL|PERIODO|CAR|FECHA_EMISION|FECHA_VCTO|TIPO_CP|SERIE|AÑO|NUMERO|...
+                return [
+                    rucEmisor, // RUC
+                    "COMERCIAL URBANTECH-ATALAYA E.I.R.L.", // Razón Social
+                    periodCompact, // Periodo
+                    car, // CAR SUNAT
+                    fecha, // Fecha Emisión
+                    empty, // Fecha Vcto
+                    tipo, // Tipo CP
+                    serie, // Serie
+                    empty, // Año DUA
+                    Number(numero), // Nro CP Inicial
+                    empty, // Nro Final
+                    t.entityDocNumber?.length === 11 ? "6" : "1", // Tipo Doc Identidad
+                    t.entityDocNumber || "", // Nro Doc Identidad
+                    t.entityName || "", // Razón Social Proveedor
+                    base, // BI Gravado DG
+                    igv, // IGV DG
+                    "0.00", // BI Gravado DGNG
+                    "0.00", // IGV DGNG
+                    "0.00", // BI Gravado DNG
+                    "0.00", // IGV DNG
+                    "0.00", // Valor Adq NG
+                    "0.00", // ISC
+                    "0.00", // ICBPER
+                    "0.00", // Otros Trib
+                    total, // Total CP
+                    "PEN", // Moneda
+                    "1.000", // Tipo Cambio
+                    empty, // Fecha Ref
+                    empty, // Tipo Ref
+                    empty, // Serie Ref
+                    empty, // Cod DAM
+                    empty, // Nro Ref
+                    empty, // Clasif Bienes
+                    empty, // ID Proyecto
+                    empty, // PorcPart
+                    empty, // IMB
+                    empty, // CAR Orig
+                    empty, // Detracción
+                    empty, // Tipo Nota
+                    "1", // Est Comp
+                    "0", // Incal
+                    // CLUs vacíos...
+                    ...Array(39).fill("")
+                ].join('|');
+            }
         });
-        const header = ['PERIODO','TIPO','SERIE','NUMERO','FECHA','DOC_ENTIDAD','RAZON_SOCIAL','BASE','IGV','TOTAL','MONEDA'].join('|');
-        const content = [header, ...lines].join('\r\n');
+        
+        // Cabeceras no se incluyen en el TXT final de SUNAT, solo los datos
+        const content = lines.join('\r\n');
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `SIRE_${activeTab === 'ventas' ? 'RVIE' : 'RCE'}_${periodCompact}.txt`;
+        const namePart = activeTab === 'ventas' ? 'RVIE' : 'RCE';
+        // Nombre de archivo según estándar: LE + RUC + AÑO + MES + 00 + ID_LIBRO + ...
+        // Simplificado para usuario:
+        a.download = `LE20615233731${periodCompact}00${activeTab === 'ventas' ? '140400' : '080400'}021111.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -196,6 +301,7 @@ export const SireModule: React.FC = () => {
                                 <th className="px-4 py-4">Serie-Número</th>
                                 <th className="px-4 py-4">RUC/DNI Entidad</th>
                                 <th className="px-4 py-4">Razón Social</th>
+                                <th className="px-4 py-4">Detalle / Producto</th>
                                 <th className="px-4 py-4 text-right">Base Imponible</th>
                                 <th className="px-4 py-4 text-right">IGV / IVAP</th>
                                 <th className="px-4 py-4 text-right">Importe Total</th>
@@ -218,11 +324,23 @@ export const SireModule: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-4 py-4 font-mono text-slate-900 font-bold uppercase">{trans.documentNumber}</td>
-                                        <td className="px-4 py-4 font-mono text-slate-600 font-bold">{trans.entityDocNumber}</td>
-                                        <td className="px-4 py-4 text-slate-900 font-black uppercase text-[11px] max-w-[200px] truncate">{trans.entityName}</td>
-                                        <td className="px-4 py-4 text-right text-slate-800 font-bold">S/ {trans.baseAmount.toFixed(2)}</td>
-                                        <td className="px-4 py-4 text-right text-blue-600 font-black">S/ {trans.igvAmount.toFixed(2)}</td>
-                                        <td className="px-4 py-4 text-right text-slate-900 font-black">S/ {trans.totalAmount.toFixed(2)}</td>
+                                        <td className="px-4 py-4 font-mono text-slate-600 font-bold">{trans.entityDocNumber || '-'}</td>
+                                        <td className="px-4 py-4 text-slate-900 font-black uppercase text-[11px] max-w-[200px] truncate">{trans.entityName || 'SIN NOMBRE'}</td>
+                                        <td className="px-4 py-4">
+                                            {trans.items && trans.items.length > 0 ? (
+                                                <button 
+                                                    onClick={() => setViewingDetails(trans)}
+                                                    className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-colors"
+                                                >
+                                                    <Search className="w-3 h-3" /> Ver {trans.items.length} {trans.items.length === 1 ? 'Producto' : 'Productos'}
+                                                </button>
+                                            ) : (
+                                                <span className="text-slate-400">-</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 text-right text-slate-800 font-bold">S/ {Number(trans.baseAmount || 0).toFixed(2)}</td>
+                                        <td className="px-4 py-4 text-right text-blue-600 font-black">S/ {Number(trans.igvAmount || 0).toFixed(2)}</td>
+                                        <td className="px-4 py-4 text-right text-slate-900 font-black">S/ {Number(trans.totalAmount || 0).toFixed(2)}</td>
                                     </tr>
                                 ))
                             )}
@@ -253,6 +371,66 @@ export const SireModule: React.FC = () => {
                     </p>
                 </div>
             </div>
+
+            {/* Modal de Detalle de Productos */}
+            {viewingDetails && (
+                <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                        <div className="flex justify-between items-center mb-4 border-b pb-4 border-slate-100">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 uppercase flex items-center gap-2">
+                                    <Package className="w-5 h-5 text-blue-600" />
+                                    Detalle de Productos
+                                </h3>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
+                                    Comprobante: {viewingDetails.documentNumber}
+                                </p>
+                            </div>
+                            <button onClick={() => setViewingDetails(null)} className="p-2 hover:bg-slate-100 text-slate-400 rounded-xl transition-colors">
+                                <X className="w-5 h-5"/>
+                            </button>
+                        </div>
+                        
+                        <div className="overflow-y-auto custom-scrollbar pr-2 flex-1 space-y-3">
+                            {viewingDetails.items.map((i, idx) => {
+                                const prod = productsCache.find((p: any) => p.id === i.productId);
+                                
+                                return (
+                                    <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center gap-4">
+                                        <div>
+                                            <div className="text-sm font-black text-slate-800 uppercase">
+                                                {prod ? `${prod.category} ${prod.brand} ${prod.model}` : i.productName}
+                                            </div>
+                                            {prod && (
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <span className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-mono font-bold tracking-wider">
+                                                        {prod.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {prod.serialNumber}
+                                                    </span>
+                                                    {prod.capacity && (
+                                                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[10px] font-black uppercase">
+                                                            {prod.capacity}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <div className="text-xs font-bold text-slate-500 uppercase">Precio Unitario</div>
+                                            <div className="text-lg font-black text-slate-900">S/ {Number((i as any).unitPrice || 0).toFixed(2)}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        
+                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                            <button onClick={() => setViewingDetails(null)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-xs font-black uppercase shadow-lg hover:bg-slate-800 transition-all">
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

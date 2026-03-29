@@ -13,6 +13,7 @@ export const ExpensesModule: React.FC = () => {
   const [sustentandoItem, setSustentandoItem] = useState<ExpenseEntry | null>(null);
   const [viewingExpense, setViewingExpense] = useState<ExpenseEntry | null>(null);
   const [stats, setStats] = useState({ total: 0, payroll: 0 });
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   const [formData, setFormData] = useState<Partial<ExpenseEntry>>({
     date: new Date().toISOString().split('T')[0], 
@@ -29,18 +30,25 @@ export const ExpensesModule: React.FC = () => {
   useEffect(() => { loadExpenses(); }, [activeTab]);
 
   const loadExpenses = async () => {
-    const list = await BackendService.getExpenses();
-    const employees = DataService.getEmployees();
-    const config = DataService.getConfig();
-    const payroll = employees.reduce((acc, emp) => acc + ((emp.baseSalary + (emp.hasChildren ? config.rmv * 0.10 : 0)) * 1.09), 0);
-    setExpenses(list);
-    setStats({ total: list.reduce((a, b) => a + b.amount, 0) + payroll, payroll });
+    setIsLoadingData(true);
+    try {
+      const list = await BackendService.getExpenses();
+      const employees = DataService.getEmployees();
+      const config = DataService.getConfig();
+      const payroll = employees.reduce((acc, emp) => acc + ((emp.baseSalary + (emp.hasChildren ? config.rmv * 0.10 : 0)) * 1.09), 0);
+      setExpenses(list);
+      setStats({ total: list.reduce((a, b) => a + b.amount, 0) + payroll, payroll });
+    } catch {
+      setExpenses(DataService.getExpenses());
+    } finally {
+      setIsLoadingData(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = Number(formData.amount);
-    const description = `${formData.beneficiary || ''} ${formData.description || ''}`.toUpperCase().trim();
+    const description = `${formData.beneficiary || ''} ${formData.description || ''}`.trim();
     await BackendService.createExpense({
       description,
       amount,
@@ -129,7 +137,18 @@ export const ExpensesModule: React.FC = () => {
       {activeTab === 'pending' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             <div className="space-y-4">
-                {pendingExpenses.length === 0 ? (
+                {isLoadingData ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                        <div key={`skeleton-pend-${i}`} className="p-8 rounded-3xl border-2 bg-white border-slate-100 shadow-sm flex justify-between items-center animate-pulse">
+                            <div className="space-y-2">
+                                <div className="flex gap-2"><div className="h-4 w-16 bg-slate-200 rounded-full"></div><div className="h-4 w-20 bg-slate-200 rounded"></div></div>
+                                <div className="h-4 w-40 bg-slate-200 rounded"></div>
+                                <div className="h-6 w-24 bg-slate-200 rounded mt-2"></div>
+                            </div>
+                            <div className="h-6 w-6 bg-slate-200 rounded-full"></div>
+                        </div>
+                    ))
+                ) : pendingExpenses.length === 0 ? (
                     <div className="p-20 text-center text-slate-300 font-black uppercase italic border-4 border-dashed rounded-[3rem] bg-white">Sin gastos por sustentar.</div>
                 ) : (
                     pendingExpenses.map(e => (
@@ -176,7 +195,16 @@ export const ExpensesModule: React.FC = () => {
             <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-b"><tr><th className="px-8 py-5">Fecha / Cat.</th><th className="px-8 py-5">Descripción</th><th className="px-8 py-5 text-right">Monto</th><th className="px-8 py-5 text-center">Acciones Auditoría</th></tr></thead>
                 <tbody className="divide-y divide-gray-50">
-                    {historyExpenses.length === 0 ? (<tr><td colSpan={4} className="p-20 text-center text-slate-300 font-black uppercase italic tracking-widest">No hay historial sustentado.</td></tr>) : historyExpenses.map(expense => (
+                    {isLoadingData ? (
+                        Array.from({ length: 4 }).map((_, i) => (
+                            <tr key={`skeleton-exp-${i}`} className="animate-pulse">
+                                <td className="px-8 py-5 space-y-2"><div className="h-4 w-24 bg-slate-200 rounded"></div><div className="h-3 w-16 bg-slate-200 rounded-full"></div></td>
+                                <td className="px-8 py-5 space-y-2"><div className="h-4 w-40 bg-slate-200 rounded"></div><div className="h-3 w-24 bg-slate-200 rounded"></div></td>
+                                <td className="px-8 py-5 text-right"><div className="h-6 w-20 bg-slate-200 rounded ml-auto"></div></td>
+                                <td className="px-8 py-5"><div className="flex justify-center gap-2"><div className="h-9 w-9 bg-slate-200 rounded-xl"></div><div className="h-9 w-9 bg-slate-200 rounded-xl"></div></div></td>
+                            </tr>
+                        ))
+                    ) : historyExpenses.length === 0 ? (<tr><td colSpan={4} className="p-20 text-center text-slate-300 font-black uppercase italic tracking-widest">No hay historial sustentado.</td></tr>) : historyExpenses.map(expense => (
                         <tr key={expense.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-8 py-5"><div className="text-slate-900 font-black">{new Date(expense.date).toLocaleDateString()}</div><div className="text-[9px] text-emerald-600 font-black bg-emerald-50 w-fit px-3 py-0.5 rounded-full mt-1 uppercase border border-emerald-100">{expense.category.replace('_', ' ')}</div></td>
                             <td className="px-8 py-5"><div className="text-slate-800 font-black uppercase text-xs">{expense.description}</div><div className="text-[10px] text-slate-400 font-bold uppercase">{expense.beneficiary}</div></td>

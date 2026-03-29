@@ -15,6 +15,7 @@ export const SalesHistoryModule: React.FC = () => {
     const [sales, setSales] = useState<Transaction[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSale, setSelectedSale] = useState<Transaction | null>(null);
+    const [isLoadingData, setIsLoadingData] = useState(true);
     const config = DataService.getConfig();
 
     const canDelete = DataService.checkPermission('sales', 'delete');
@@ -23,12 +24,21 @@ export const SalesHistoryModule: React.FC = () => {
         refresh();
     }, []);
 
-    const refresh = async () => {
+    const refresh = async (force = false) => {
+        if (sales.length === 0 || force) {
+            setIsLoadingData(true);
+        } else {
+            BackendService.getTransactions('sale').then(setSales).catch(() => {});
+            return;
+        }
+
         try {
             const backendSales = await BackendService.getTransactions('sale');
-            setSales(backendSales.reverse());
-        } catch {
-            setSales(DataService.getTransactions('sale').reverse());
+            setSales(backendSales);
+        } catch (error) {
+            setSales(DataService.getTransactions('sale'));
+        } finally {
+            setIsLoadingData(false);
         }
     };
 
@@ -37,19 +47,11 @@ export const SalesHistoryModule: React.FC = () => {
         window.print();
     };
 
-    const handleDelete = async (id: string, e: React.MouseEvent) => {
+    const handleDelete = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (confirm('¿Está seguro de ANULAR esta venta? Los productos volverán al stock disponible.')) {
-            try {
-                await BackendService.deleteTransaction(id);
-                refresh();
-                alert('Venta anulada con éxito.');
-            } catch (err: any) {
-                console.error("Error al eliminar venta:", err);
-                DataService.deleteTransaction('sale', id);
-                refresh();
-                alert('Venta eliminada localmente.');
-            }
+            DataService.deleteTransaction('sale', id);
+            refresh(true);
         }
     };
 
@@ -98,7 +100,18 @@ export const SalesHistoryModule: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {filteredSales.length === 0 ? (
+                        {isLoadingData ? (
+                            Array.from({ length: 4 }).map((_, i) => (
+                                <tr key={`skeleton-sale-${i}`} className="animate-pulse">
+                                    <td className="px-8 py-5 space-y-2"><div className="h-4 w-24 bg-slate-200 rounded"></div><div className="h-3 w-16 bg-slate-200 rounded"></div></td>
+                                    <td className="px-8 py-5 space-y-2"><div className="h-3 w-16 bg-slate-200 rounded"></div><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
+                                    <td className="px-8 py-5 space-y-2"><div className="h-4 w-40 bg-slate-200 rounded"></div><div className="h-3 w-24 bg-slate-200 rounded"></div></td>
+                                    <td className="px-8 py-5 text-right"><div className="h-4 w-20 bg-slate-200 rounded ml-auto"></div></td>
+                                    <td className="px-8 py-5"><div className="h-6 w-24 bg-slate-200 rounded-full mx-auto"></div></td>
+                                    <td className="px-8 py-5"><div className="flex justify-center gap-2"><div className="h-9 w-9 bg-slate-200 rounded-xl"></div><div className="h-9 w-9 bg-slate-200 rounded-xl"></div></div></td>
+                                </tr>
+                            ))
+                        ) : filteredSales.length === 0 ? (
                             <tr><td colSpan={6} className="p-20 text-center text-slate-300 font-black uppercase italic tracking-widest">No hay ventas registradas.</td></tr>
                         ) : (
                             filteredSales.map(sale => (

@@ -10,7 +10,8 @@ import { SalesHistoryModule } from './components/SalesHistoryModule';
 import { SettingsModule } from './components/SettingsModule';
 import { PayrollModule } from './components/PayrollModule';
 import { ExpensesModule } from './components/ExpensesModule';
-import { SireModule } from './components/SireModule'; // Nuevo Import
+import { SireModule } from './components/SireModule'; 
+import { DataUpdateModule } from './components/DataUpdateModule';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { FileText, Loader2 } from 'lucide-react';
@@ -26,19 +27,57 @@ const App: React.FC = () => {
   // Inicializar en true si hay sesión guardada para evitar "parpadeo" del Login
   const [isLoading, setIsLoading] = useState(() => !!localStorage.getItem('mype_session'));
 
+  const preloadInitialData = async () => {
+    try {
+      // Cargar datos críticos y pesados en paralelo
+      // Gracias al caching, esto poblará el localStorage
+      await Promise.all([
+        BackendService.getConfig(),
+        BackendService.getRoles(),
+        BackendService.getProducts(),      // Heavy
+        BackendService.getSuppliers(),     // Medium
+        BackendService.getIntermediaries(),// Medium
+        BackendService.getEmployees(),     // Light
+        BackendService.getExpenses(),      // Medium
+      ]);
+      
+      // Sincronizar roles con DataService (legacy support)
+      const roles = await BackendService.getRoles();
+      const config = await BackendService.getConfig();
+      
+      const roleConfigs = roles.map((r: any) => ({
+           id: r.id,
+           role: r.name,
+           label: r.label,
+           permissions: r.permissions
+      }));
+      
+      const fullConfig = {
+          ...config,
+          roleConfigs: roleConfigs.length > 0 ? roleConfigs : (DataService.getConfig().roleConfigs || [])
+      };
+      
+      DataService.saveConfig(fullConfig);
+      console.log("System data preloaded & synced");
+    } catch (e) {
+      console.error("Preload failed", e);
+      // No bloqueamos la app si falla el preload, el usuario podrá reintentar dentro
+    }
+  };
+
   useEffect(() => {
     const initSession = async () => {
       const raw = localStorage.getItem('mype_session');
       if (raw) {
         try {
           const user = JSON.parse(raw);
-          // Si el estado inicial fue false (raro pero posible por race condition), aseguramos true
           setIsLoading(true); 
-          await syncConfig(); 
+          // Pre-cargar todos los datos antes de mostrar la APP
+          await preloadInitialData();
           setCurrentUser(user);
           setViewState('APP');
         } catch {
-          localStorage.removeItem('mype_session'); // Limpiar sesión corrupta
+          localStorage.removeItem('mype_session'); 
         } finally {
           setIsLoading(false);
         }
@@ -57,10 +96,23 @@ const App: React.FC = () => {
 
     const connect = () => {
       const isDev = !!(import.meta as any).env?.DEV;
-      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://100.116.47.110:8000';
-      const wsUrl = isDev ? `ws://${window.location.host}/ws/updates` : `${String(base).replace(/^http/, 'ws')}/ws/updates`;
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
       
-      console.log('Iniciando conexión WS...');
+      // Determine correct protocol for WebSockets (ws or wss) based on the connection protocol (http or https)
+      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      // Construir la URL del WS dependiendo de si es dev o prod
+      let wsUrl = '';
+      if (isDev) {
+         wsUrl = `${wsProtocol}//${window.location.host}/ws/updates`;
+      } else {
+         // Si la base es https://, usar wss://
+         const cleanBase = base.replace(/^https?:\/\//, '');
+         const apiProtocol = base.startsWith('https') ? 'wss:' : 'ws:';
+         wsUrl = `${apiProtocol}//${cleanBase}/ws/updates`;
+      }
+      
+      console.log('Iniciando conexión WS a:', wsUrl);
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -122,37 +174,13 @@ const App: React.FC = () => {
     };
   }, [currentUser]);
 
-  const syncConfig = async () => {
-      try {
-          const [config, roles] = await Promise.all([
-              BackendService.getConfig(),
-              BackendService.getRoles()
-          ]);
-          
-          const roleConfigs = roles.map((r: any) => ({
-               id: r.id,
-               role: r.name,
-               label: r.label,
-               permissions: r.permissions
-          }));
-          
-          const fullConfig = {
-              ...config,
-              roleConfigs: roleConfigs.length > 0 ? roleConfigs : (DataService.getConfig().roleConfigs || [])
-          };
-          
-          DataService.saveConfig(fullConfig);
-          console.log("Config synced on login/load");
-      } catch (e) {
-          console.error("Config sync failed", e);
-      }
-  };
-
   const handleLogin = async (user: Employee) => {
-    await syncConfig();
+    setIsLoading(true); // Show loading screen during login preload
+    await preloadInitialData();
     setCurrentUser(user);
     setViewState('APP');
     setActiveTab('dashboard'); 
+    setIsLoading(false);
   };
 
   const handleLogout = () => {
@@ -182,7 +210,9 @@ const App: React.FC = () => {
       case 'configuracion':
         return <SettingsModule />;
       case 'contabilidad':
-        return <SireModule />; // Renderiza el nuevo módulo
+        return <SireModule />; 
+      case 'actualizaciones':
+        return <DataUpdateModule />;
       default:
         return <Dashboard />;
     }
@@ -190,10 +220,16 @@ const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center z-50 fixed inset-0">
-        <Loader2 className="w-16 h-16 text-emerald-500 animate-spin mb-6" />
-        <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">WasiTech</h2>
-        <p className="text-slate-400 text-xs font-bold uppercase tracking-wider animate-pulse">Sincronizando datos del sistema...</p>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center z-50 fixed inset-0">
+        <div className="relative mb-8">
+            <div className="absolute inset-0 bg-emerald-500 blur-2xl opacity-20 animate-pulse rounded-full"></div>
+            <img src="/WT_logo2.png" alt="WasiTech" className="w-32 h-32 relative z-10 drop-shadow-2xl animate-pulse" />
+        </div>
+        <h2 className="text-3xl font-black text-white uppercase tracking-[0.2em] mb-4">WasiTech</h2>
+        <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Sincronizando datos...</p>
+        </div>
       </div>
     );
   }

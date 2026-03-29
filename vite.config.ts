@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const target = env.VITE_API_BASE_URL || 'http://100.116.47.110:8000';
+    const target = env.VITE_API_BASE_URL || 'http://localhost:8000';
     const proxy: Record<string, any> = {
       '/auth': { target, changeOrigin: true, secure: false },
       '/employees': { target, changeOrigin: true, secure: false },
@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        allowedHosts: ['localhost', '127.0.0.1', '100.116.47.110'],
+        allowedHosts: ['localhost', '127.0.0.1', '100.116.47.110', 'b839-143-105-157-235.ngrok-free.app'],
         proxy
       },
       plugins: [react()],

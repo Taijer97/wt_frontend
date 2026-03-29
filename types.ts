@@ -116,6 +116,7 @@ export interface Supplier {
   id: string;
   ruc: string;
   razonSocial: string;
+  shortName?: string;
   contactName?: string;
   phone?: string;
   email?: string;
@@ -142,6 +143,13 @@ export interface ExpenseEntry {
 
 export type MarginType = 'PERCENT' | 'FIXED';
 
+export interface ProductCatalogItem {
+  category: string;
+  brand: string;
+  model: string;
+  capacity?: string;
+}
+
 export interface AppConfig {
   uit: number;
   rmv: number;
@@ -161,6 +169,7 @@ export interface AppConfig {
   ruc20SaleMargin: number; 
   ruc20SaleMarginType: MarginType;
   productCategories: string[];
+  productCatalog?: ProductCatalogItem[];
   isIgvExempt: boolean;
   igvExemptionReason: string;
   ruc10TaxRegime: TaxRegime;
@@ -191,7 +200,8 @@ export interface Product {
   totalCost?: number;
   status?: ProductStatus;
   origin?: HardwareOrigin;
-  intermediaryId?: string; 
+  intermediaryId?: string;
+  supplierId?: string;
   transferBase?: number;
   transferIgv?: number;
   transferTotal?: number;
@@ -279,42 +289,42 @@ export interface PurchaseEntry {
   id: string;
   date: string;
   status: PurchaseStatus;
-  intermediaryId?: string; 
-  providerDni: string;
-  providerName: string;
-  providerAddress: string;
-  providerCivilStatus: CivilStatus;
-  providerOccupation: string;
-  productType: string;
-  productBrand: string;
-  productModel: string;
-  productSerial: string;
+  intermediaryId?: string;
+  supplierId?: string;
+  supplierName?: string;
+  supplierShortName?: string;
+  providerDni?: string;
+  providerName?: string;
+  providerAddress?: string;
+  providerCivilStatus?: CivilStatus;
+  providerPhone?: string;
+  providerOccupation?: string;
+  productType?: string;
+  productBrand?: string;
+  productModel?: string;
+  productSerial?: string;
   productIdType?: 'SERIE' | 'IMEI';
-  productColor: string;
-  productCondition: 'USADO' | 'REACONDICIONADO' | 'NUEVO';
-  originType: HardwareOrigin;
-  originProofUrl?: string;
-  priceAgreed: number;
-  costNotary: number;
-  bankOrigin: string;
-  bankDestination: string;
-  operationNumber?: string;
-  operationDate?: string;
+  productCondition?: 'USADO' | 'REACONDICIONADO' | 'NUEVO';
+  originType?: HardwareOrigin;
+  priceAgreed?: number;
+  costNotary?: number;
+  bankOrigin?: string;
+  bankAccount?: string;
+  voucherUrl?: string; 
   contractUrl?: string;
-  voucherUrl?: string;
+  originProofUrl?: string;
+  pdfUrl?: string;
+  djUrl?: string;
+  operationDate?: string;
   intermediaryName?: string;
   intermediaryDocNumber?: string;
   intermediaryRucNumber?: string;
   intermediaryAddress?: string;
-  items?: {
-    id: string;
-    category: string;
-    brand: string;
-    model: string;
-    serial: string;
-    cost: number;
-    specs: string;
-  }[];
+  intermediaryPhone?: string;
+  blockNumber?: number;
+  sellerDocNumber?: string;
+  documentNumber?: string;
+  items?: any[];
 }
 
 export interface SaleEntry {

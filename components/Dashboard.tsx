@@ -20,11 +20,35 @@ import {
   Clock,
   CheckCircle,
   Info,
-  ShieldAlert
+  ShieldAlert,
+  X
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
 import { ProductStatus, TaxRegime } from '../types';
+
+// --- CUSTOM ALERT COMPONENT (Same style as others) ---
+const CustomAlert = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className="fixed top-6 right-6 z-[200] animate-in slide-in-from-right-8 fade-in duration-300">
+            <div className={`bg-[#202020] rounded-xl shadow-2xl flex items-center gap-3 p-4 pr-12 min-w-[280px] border border-white/10 relative overflow-hidden`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${type === 'success' ? 'bg-[#4ade80]' : 'bg-red-500'}`}>
+                    {type === 'success' ? <CheckCircle className="w-4 h-4 text-[#202020]" /> : <X className="w-4 h-4 text-[#202020]" />}
+                </div>
+                <p className="text-white font-medium text-sm">{message}</p>
+                <button onClick={onClose} className="absolute right-4 text-slate-400 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+};
+// ------------------------------
 
 export const Dashboard: React.FC = () => {
   const config = DataService.getConfig();

@@ -40,6 +40,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
     { id: 'planilla', label: 'Planilla & RRHH', icon: Users, roles: ['ADMIN', 'RRHH'], moduleId: 'payroll' },
     { id: 'contabilidad', label: 'Contabilidad SIRE', icon: FileText, roles: ['ADMIN'], moduleId: 'accounting' },
     { id: 'configuracion', label: 'Configuración', icon: Settings, roles: ['ADMIN', 'RRHH'], moduleId: 'settings' },
+    { id: 'actualizaciones', label: 'Auditoría de Datos', icon: FileText, roles: ['ADMIN'], moduleId: 'settings' }, // Nuevo Módulo
   ];
 
   const config = DataService.getConfig();

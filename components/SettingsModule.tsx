@@ -13,14 +13,37 @@ import {
 import { fetchRuc } from '../services/rucService';
 import { fetchDni } from '../services/dniService';
 
+// --- CUSTOM ALERT COMPONENT ---
+const CustomAlert = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className="fixed top-6 right-6 z-[200] animate-in slide-in-from-right-8 fade-in duration-300">
+            <div className={`bg-[#202020] rounded-xl shadow-2xl flex items-center gap-3 p-4 pr-12 min-w-[280px] border border-white/10 relative overflow-hidden`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${type === 'success' ? 'bg-[#4ade80]' : 'bg-red-500'}`}>
+                    {type === 'success' ? <CheckCircle className="w-4 h-4 text-[#202020]" /> : <X className="w-4 h-4 text-[#202020]" />}
+                </div>
+                <p className="text-white font-medium text-sm">{message}</p>
+                <button onClick={onClose} className="absolute right-4 text-slate-400 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+};
+// ------------------------------
+
 export const SettingsModule: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'general' | 'proveedores' | 'intermediarios' | 'trabajadores' | 'roles'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'catalogo' | 'proveedores' | 'intermediarios' | 'trabajadores' | 'roles'>('general');
     const [config, setConfig] = useState<AppConfig>(DataService.getConfig());
-    
-    // Listas
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
+
+    const [isProcessing, setIsProcessing] = useState(false);
 
     // Búsqueda
     const [searchQuery, setSearchQuery] = useState('');
@@ -38,6 +61,12 @@ export const SettingsModule: React.FC = () => {
     const [selectedRoleIndex, setSelectedRoleIndex] = useState(0);
     const [showAddRoleModal, setShowAddRoleModal] = useState(false);
     const [newRoleData, setNewRoleData] = useState({ label: '', id: '' });
+    
+    // Alertas
+    const [alertInfo, setAlertInfo] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+    // Provide the setter to children context or handlers
+    const showAlert = (message: string, type: 'success' | 'error') => setAlertInfo({ message, type });
 
     useEffect(() => {
         refreshData();
@@ -46,18 +75,32 @@ export const SettingsModule: React.FC = () => {
     const refreshData = async () => {
         try {
             const roles = await BackendService.getRoles();
-            const roleConfigs = roles.map((r: any) => ({
-                id: r.id,
-                role: r.name,
-                label: r.label,
-                permissions: r.permissions
-            }));
+            const roleConfigs = roles.map((r: any) => {
+                let parsedPerms = r.permissions;
+                if (typeof parsedPerms === 'string') {
+                    try { parsedPerms = JSON.parse(parsedPerms); } catch (e) { parsedPerms = {}; }
+                }
+                return {
+                    id: r.id,
+                    role: r.role || r.name,
+                    label: r.label,
+                    permissions: parsedPerms || {}
+                };
+            });
             
             const cfg = await BackendService.getConfig();
+            
+            // Migrate old productCategories to productCatalog if catalog is empty
+            let mergedCatalog = cfg.productCatalog || [];
+            if (mergedCatalog.length === 0 && cfg.productCategories && cfg.productCategories.length > 0) {
+                mergedCatalog = cfg.productCategories.map((c: string) => ({ category: c, brand: 'SIN MARCA', model: 'GENERICO' }));
+            }
+
             // Merge roles from DB into config state
             setConfig({
                 ...cfg,
                 productCategories: cfg.productCategories || [],
+                productCatalog: mergedCatalog,
                 roleConfigs: roleConfigs.length > 0 ? roleConfigs : DataService.getConfig().roleConfigs
             });
             
@@ -68,6 +111,7 @@ export const SettingsModule: React.FC = () => {
                     id: String(s.id),
                     ruc: s.ruc,
                     razonSocial: s.name,
+                    shortName: s.short_name || '',
                     contactName: s.contact || '',
                     phone: s.phone || '',
                     email: s.email || '',
@@ -96,11 +140,13 @@ export const SettingsModule: React.FC = () => {
     };
 
     const handleSaveConfig = async () => {
+        setIsProcessing(true);
         try {
             // Save general config
             const payload = {
                 ...config,
-                productCategories: config.productCategories || [],
+                productCategories: Array.from(new Set(config.productCatalog?.map(c => c.category) || [])),
+                productCatalog: config.productCatalog || [],
                 // Don't send roleConfigs here as they are managed via separate endpoints
             };
             const saved = await BackendService.updateConfig(payload);
@@ -116,11 +162,14 @@ export const SettingsModule: React.FC = () => {
                  });
             }
             
-            alert('Configuración guardada en la base de datos.');
+            // Ya no usamos alert aquí, lo maneja el botón o un setAlertInfo global si es necesario
             refreshData();
+            showAlert('Configuración Guardada', 'success');
         } catch {
             DataService.saveConfig(config);
-            alert('Guardado local (offline).');
+            showAlert('Guardado local (offline)', 'success');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -129,7 +178,7 @@ export const SettingsModule: React.FC = () => {
         if (!trimName) return;
         const currentCats = config.productCategories || [];
         if (currentCats.some(c => c.toLowerCase() === trimName.toLowerCase())) {
-            alert('Esta categoría ya existe.');
+            showAlert('Esta categoría ya existe.', 'error');
             return;
         }
         const updatedCategories = [...currentCats, trimName];
@@ -161,91 +210,129 @@ export const SettingsModule: React.FC = () => {
 
     const handleCreateRole = async () => {
         if (!newRoleData.label || !newRoleData.id) {
-            alert('Por favor, asigne un nombre y un código al rol.');
+            showAlert('Nombre y código requeridos.', 'error');
             return;
         }
         const roleId = newRoleData.id.toUpperCase().trim();
-        if (config.roleConfigs.some(r => r.role === roleId)) {
-            alert('Este código de rol ya existe.');
+        if (config.roleConfigs.some(r => r.id === roleId || r.role === roleId)) {
+            showAlert('Este código de rol ya existe.', 'error');
             return;
         }
-        const readOnly = (): PermissionSet => ({ create: false, read: true, update: false, delete: false });
         
+        setIsProcessing(true);
         try {
             await BackendService.createRole({
                 name: roleId,
-                label: newRoleData.label,
-                permissions: {
-                    dashboard: readOnly(), inventory: readOnly(), sales: readOnly(),
-                    purchases_ruc10: readOnly(), purchases_ruc20: readOnly(), expenses: readOnly(),
-                    payroll: readOnly(), accounting: readOnly(), settings: readOnly(),
-                }
+                label: newRoleData.label
             });
             setShowAddRoleModal(false);
             setNewRoleData({ label: '', id: '' });
+            
             await refreshData();
-            alert('Rol creado exitosamente.');
+            
+            showAlert('Rol creado exitosamente.', 'success');
         } catch {
-            alert('Error al crear el rol en el backend.');
+            showAlert('Error al crear el rol en el backend.', 'error');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const handleDeleteRole = async (idx: number, e: React.MouseEvent) => {
         e.stopPropagation();
         const roleToDelete = config.roleConfigs[idx];
-        if (roleToDelete.role === 'ADMIN') return alert('No se puede eliminar el rol ADMIN.');
+        if (roleToDelete.role === 'ADMIN') return showAlert('No se puede eliminar el rol ADMIN.', 'error');
         if (confirm(`¿Eliminar el rol "${roleToDelete.label}"?`)) {
             try {
                 if (roleToDelete.id) {
                     await BackendService.deleteRole(String(roleToDelete.id));
                     await refreshData();
                     setSelectedRoleIndex(0);
+                    showAlert('Rol eliminado.', 'success');
                 }
             } catch {
-                alert('Error al eliminar el rol.');
+                showAlert('Error al eliminar el rol.', 'error');
             }
         }
     };
 
     const handleTogglePermission = (module: AppModule, action: keyof PermissionSet) => {
         const updatedRoles = [...config.roleConfigs];
-        const role = updatedRoles[selectedRoleIndex];
+        if (!updatedRoles[selectedRoleIndex]) return;
+        
+        // Deep copy the specific role to trigger React state update correctly
+        const role = JSON.parse(JSON.stringify(updatedRoles[selectedRoleIndex]));
+        
+        if (!role.permissions) {
+            role.permissions = {} as Record<AppModule, PermissionSet>;
+        }
+        if (!role.permissions[module]) {
+            role.permissions[module] = { create: false, read: false, update: false, delete: false };
+        }
+        
         role.permissions[module][action] = !role.permissions[module][action];
+        updatedRoles[selectedRoleIndex] = role;
+        
         setConfig({ ...config, roleConfigs: updatedRoles });
     };
 
     // --- MANEJADORES CRUD ESTÁNDAR ---
     const handleSaveSupplier = async (s: Supplier) => { 
-        if (editingSupplier) {
-            await BackendService.updateSupplier(s.id, {
-                name: s.razonSocial, contact: s.contactName, category: s.category,
-                department: s.department, province: s.province, district: s.district,
-                address: s.address, phone: s.phone
-            });
-        } else {
-            await BackendService.createSupplier({
-                name: s.razonSocial, ruc: s.ruc, contact: s.contactName, 
-                category: s.category, department: s.department, province: s.province, district: s.district,
-                address: s.address, phone: s.phone
-            } as any);
+        setIsProcessing(true);
+        try {
+            if (editingSupplier) {
+                await BackendService.updateSupplier(s.id, {
+                    name: s.razonSocial, short_name: s.shortName, contact: s.contactName, category: s.category,
+                    department: s.department, province: s.province, district: s.district,
+                    address: s.address, phone: s.phone
+                });
+            } else {
+                await BackendService.createSupplier({
+                    name: s.razonSocial, short_name: s.shortName, ruc: s.ruc, contact: s.contactName, 
+                    category: s.category, department: s.department, province: s.province, district: s.district,
+                    address: s.address, phone: s.phone
+                } as any);
+            }
+            await refreshData(); setEditingSupplier(null); setShowAddForm(false);
+            showAlert('Proveedor Guardado', 'success');
+        } catch {
+            showAlert('Error al guardar proveedor', 'error');
+        } finally {
+            setIsProcessing(false);
         }
-        await refreshData(); setEditingSupplier(null); setShowAddForm(false);
     };
     const handleDeleteSupplier = async (id: string) => { 
-        if (confirm('¿Eliminar proveedor?')) { await BackendService.deleteSupplier(id); await refreshData(); }
+        if (confirm('¿Eliminar proveedor?')) { 
+            await BackendService.deleteSupplier(id); 
+            await refreshData(); 
+            showAlert('Proveedor Eliminado', 'success');
+        }
     };
     const handleSaveIntermediary = async (i: Intermediary) => { 
-        if (editingIntermediary) {
-            await BackendService.updateIntermediary(i.id, { name: i.fullName, ruc_number: i.rucNumber || undefined, phone: i.phone || undefined, email: i.email || undefined, address: i.address || undefined });
-        } else {
-            await BackendService.createIntermediary({ name: i.fullName, doc_number: i.docNumber, ruc_number: i.rucNumber || undefined, phone: i.phone || undefined, email: i.email || undefined, address: i.address || undefined });
+        setIsProcessing(true);
+        try {
+            if (editingIntermediary) {
+                await BackendService.updateIntermediary(i.id, { name: i.fullName, ruc_number: i.rucNumber || undefined, phone: i.phone || undefined, email: i.email || undefined, address: i.address || undefined });
+            } else {
+                await BackendService.createIntermediary({ name: i.fullName, doc_number: i.docNumber, ruc_number: i.rucNumber || undefined, phone: i.phone || undefined, email: i.email || undefined, address: i.address || undefined });
+            }
+            await refreshData(); setEditingIntermediary(null); setShowAddForm(false);
+            showAlert('Intermediario Guardado', 'success');
+        } catch {
+            showAlert('Error al guardar intermediario', 'error');
+        } finally {
+            setIsProcessing(false);
         }
-        await refreshData(); setEditingIntermediary(null); setShowAddForm(false);
     };
     const handleDeleteIntermediary = async (id: string) => { 
-        if (confirm('¿Eliminar intermediario?')) { await BackendService.deleteIntermediary(id); await refreshData(); }
+        if (confirm('¿Eliminar intermediario?')) { 
+            await BackendService.deleteIntermediary(id); 
+            await refreshData(); 
+            showAlert('Intermediario Eliminado', 'success');
+        }
     };
     const handleSaveEmployee = async (e: Employee) => { 
+        setIsProcessing(true);
         try {
             if (editingEmployee) {
                 const saved = await BackendService.updateEmployee(e.id, { 
@@ -260,12 +347,14 @@ export const SettingsModule: React.FC = () => {
                 });
             }
             setEditingEmployee(null); setShowAddForm(false); await refreshData(); 
-            alert('Colaborador guardado en el backend');
+            showAlert('Colaborador Guardado', 'success');
         } catch {
             DataService.saveEmployee(e); 
             setEditingEmployee(null); setShowAddForm(false); 
             await refreshData();
-            alert('Guardado local (offline)');
+            showAlert('Guardado local (offline)', 'success');
+        } finally {
+            setIsProcessing(false);
         }
     };
     const handleDeleteEmployee = async (id: string) => { 
@@ -273,9 +362,11 @@ export const SettingsModule: React.FC = () => {
             try {
                 await BackendService.deleteEmployee(id); 
                 await refreshData();
+                showAlert('Colaborador Eliminado', 'success');
             } catch {
                 DataService.deleteEmployee(id); 
                 refreshData(); 
+                showAlert('Colaborador Eliminado', 'success');
             }
         } 
     };
@@ -297,6 +388,7 @@ export const SettingsModule: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl shadow-inner overflow-x-auto w-full md:w-auto">
                     <button onClick={() => { setActiveTab('general'); setShowAddForm(false); }} className={`px-4 md:px-6 py-2.5 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'general' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-600 hover:text-slate-800'}`}>General</button>
+                    <button onClick={() => { setActiveTab('catalogo'); setShowAddForm(false); }} className={`px-4 md:px-6 py-2.5 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'catalogo' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-600 hover:text-slate-800'}`}>Catálogo</button>
                     <button onClick={() => { setActiveTab('proveedores'); setShowAddForm(false); }} className={`px-4 md:px-6 py-2.5 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'proveedores' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-600 hover:text-slate-800'}`}>Proveedores</button>
                     <button onClick={() => { setActiveTab('intermediarios'); setShowAddForm(false); }} className={`px-4 md:px-6 py-2.5 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'intermediarios' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-600 hover:text-slate-800'}`}>Intermediarios</button>
                     <button onClick={() => { setActiveTab('trabajadores'); setShowAddForm(false); }} className={`px-4 md:px-6 py-2.5 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'trabajadores' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-600 hover:text-slate-800'}`}>Colaboradores</button>
@@ -402,28 +494,8 @@ export const SettingsModule: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* SECCIÓN 3: EXONERACIÓN Y CATEGORÍAS */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-4">
-                            <div className="space-y-6">
-                                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-b-2 pb-2 flex items-center gap-2">
-                                    <Tag className="w-4 h-4 text-emerald-600"/> Categorías de Inventario
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="flex gap-2">
-                                        <input value={newCategory} onChange={e => setNewCategory(e.target.value.toUpperCase())} placeholder="Nueva categoría..." className="flex-1 border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-bold" onKeyPress={e => e.key === 'Enter' && handleAddCategory()} />
-                                        <button onClick={handleAddCategory} className="bg-slate-900 text-white px-6 rounded-xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg"><Plus className="w-5 h-5"/></button>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner max-h-[150px] overflow-y-auto custom-scrollbar">
-                                        {config.productCategories.map((cat, idx) => (
-                                            <div key={idx} className="bg-white border-2 border-slate-200 px-4 py-1.5 rounded-full flex items-center gap-3 group hover:border-red-400 transition-all">
-                                                <span className="text-[10px] font-black text-slate-700 uppercase">{cat}</span>
-                                                <button onClick={() => handleRemoveCategory(cat)} className="text-slate-300 group-hover:text-red-500 transition-colors"><X className="w-3 h-3"/></button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
+                        {/* SECCIÓN 3: EXONERACIÓN */}
+                        <div className="grid grid-cols-1 gap-12 pt-4">
                             <div className="space-y-6">
                                 <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-b-2 pb-2 flex items-center gap-2">
                                     <ShieldCheck className="w-4 h-4 text-emerald-600"/> Configuración de IGV (SUNAT)
@@ -449,11 +521,24 @@ export const SettingsModule: React.FC = () => {
                         </div>
 
                         <div className="flex justify-end pt-8 border-t-2 border-slate-100">
-                            <button onClick={handleSaveConfig} className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-2xl hover:bg-emerald-600 transition-all active:scale-95 uppercase tracking-widest text-xs border-2 border-slate-800">
-                                <Save className="w-6 h-6 text-emerald-400" /> Guardar Todos los Cambios
+                            <button 
+                                onClick={handleSaveConfig} 
+                                disabled={isProcessing}
+                                className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-2xl hover:bg-emerald-600 transition-all active:scale-95 uppercase tracking-widest text-xs border-2 border-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isProcessing ? (
+                                    <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <Save className="w-6 h-6 text-emerald-400" /> 
+                                )}
+                                {isProcessing ? 'Guardando...' : 'Guardar Todos los Cambios'}
                             </button>
                         </div>
                     </div>
+                )}
+
+                {activeTab === 'catalogo' && (
+                    <CatalogSettings config={config} setConfig={setConfig} handleSaveConfig={handleSaveConfig} />
                 )}
 
                 {activeTab === 'roles' && (
@@ -507,7 +592,8 @@ export const SettingsModule: React.FC = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-200">
                                         {modulesList.map((m) => {
-                                            const perms = config.roleConfigs[selectedRoleIndex]?.permissions[m.id] || { create: false, read: false, update: false, delete: false };
+                                            const rolePermissions = config.roleConfigs[selectedRoleIndex]?.permissions || {};
+                                            const perms = rolePermissions[m.id] || { read: false, create: false, update: false, delete: false };
                                             return (
                                                 <tr key={m.id} className="hover:bg_white transition-colors group">
                                                     <td className="px-8 py-5">
@@ -551,13 +637,24 @@ export const SettingsModule: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {activeTab === 'proveedores' && suppliers.filter(s => (s.razonSocial || '').toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
+                                {activeTab === 'proveedores' && suppliers.filter(s => (s.razonSocial || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.shortName || '').toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
                                     <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-8 py-5"><div className="font-black text-slate-900 uppercase text-sm">{s.razonSocial}</div><div className="text-[10px] font-mono text-blue-600 font-black">RUC: {s.ruc}</div></td>
+                                        <td className="px-8 py-5">
+                                            <div className="font-black text-slate-900 uppercase text-sm">{s.shortName || s.razonSocial}</div>
+                                            <div className="text-[10px] font-mono text-blue-600 font-black">RUC: {s.ruc} {s.shortName && <span className="text-slate-400 ml-1">| {s.razonSocial}</span>}</div>
+                                        </td>
                                         <td className="px-8 py-5">
                                             <div className="text-xs font-black text-slate-700 uppercase">{s.contactName || '-'}</div>
-                                            <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1 uppercase"><Phone className="w-3 h-3 text-slate-400"/> {s.phone || '-'}</div>
-                                            <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase"><MapPin className="w-3 h-3 text-slate-300"/> {s.address || `${s.district || '-'}, ${s.province || '-'}, ${s.department || '-'}`}</div>
+                                            <div className="flex flex-col gap-1 mt-1">
+                                                <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1 uppercase"><Phone className="w-3 h-3 text-slate-400"/> {s.phone || '-'}</div>
+                                                {s.email && <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1 lowercase"><Mail className="w-3 h-3 text-slate-400"/> {s.email}</div>}
+                                            </div>
+                                            <div className="mt-2 border-t border-slate-100 pt-2">
+                                                <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase"><MapPin className="w-3 h-3 text-slate-300"/> {s.address || '-'}</div>
+                                                {(s.department || s.province || s.district) && (
+                                                    <div className="text-[9px] text-slate-400 pl-4 mt-0.5 uppercase">{s.district} - {s.province} - {s.department}</div>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-8 py-5"><span className="text-[10px] font-black px-3 py-1 rounded-full bg-blue-100 text-blue-700 uppercase border border-blue-200">{s.category}</span></td>
                                         <td className="px-8 py-5"><div className="flex justify-center gap-3"><button onClick={() => setEditingSupplier(s)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Pencil className="w-4 h-4"/></button><button onClick={() => handleDeleteSupplier(s.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4"/></button></div></td>
@@ -629,13 +726,239 @@ export const SettingsModule: React.FC = () => {
 const PermissionToggle: React.FC<{ active: boolean, onClick: () => void, color: string, icon: React.ReactNode }> = ({ active, onClick, color, icon }) => (
     <button 
         onClick={onClick}
-        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm active:scale-90 ${active ? `${color} text-white shadow-lg` : 'bg-slate-200 text-slate-400 grayscale'}`}
+        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm active:scale-90 ${active ? `${color} text-white shadow-lg border-2 border-white ring-2 ring-slate-100` : 'bg-slate-50 text-slate-300 border-2 border-slate-200 hover:bg-slate-100 hover:text-slate-400 opacity-30 grayscale'}`}
     >
         {icon}
     </button>
 );
 
-const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) => void, onCancel: () => void }> = ({ initialData, onSubmit, onCancel }) => {
+const CatalogSettings: React.FC<{ config: AppConfig, setConfig: (c: AppConfig) => void, handleSaveConfig: () => void }> = ({ config, setConfig, handleSaveConfig }) => {
+    const [newCat, setNewCat] = useState('');
+    const [newBrand, setNewBrand] = useState('');
+    const [newModel, setNewModel] = useState('');
+    const [newCapacity, setNewCapacity] = useState('');
+    const [selectedCat, setSelectedCat] = useState('');
+    const [selectedBrand, setSelectedBrand] = useState('');
+    const [selectedModel, setSelectedModel] = useState('');
+
+    const catalog = config.productCatalog || [];
+    
+    // Derived lists
+    const categories = Array.from(new Set(catalog.map(c => c.category))).sort();
+    const brandsForCat = selectedCat ? Array.from(new Set(catalog.filter(c => c.category === selectedCat).map(c => c.brand))).sort() : [];
+    const modelsForBrand = (selectedCat && selectedBrand) ? Array.from(new Set(catalog.filter(c => c.category === selectedCat && c.brand === selectedBrand).map(c => c.model))).sort() : [];
+    const capacitiesForModel = (selectedCat && selectedBrand && selectedModel) ? catalog.filter(c => c.category === selectedCat && c.brand === selectedBrand && c.model === selectedModel && c.capacity).map(c => c.capacity as string).sort() : [];
+
+    const handleAddCat = () => {
+        const val = newCat.trim().toUpperCase();
+        if (!val) return;
+        if (!categories.includes(val)) {
+            const newCatalog = [...catalog, { category: val, brand: 'SIN MARCA', model: 'GENERICO' }];
+            const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+            setConfig(updatedConfig);
+            setSelectedCat(val);
+        }
+        setNewCat('');
+    };
+
+    const handleAddBrand = () => {
+        const val = newBrand.trim().toUpperCase();
+        if (!val || !selectedCat) return;
+        if (!brandsForCat.includes(val)) {
+            const newCatalog = [...catalog, { category: selectedCat, brand: val, model: 'GENERICO' }];
+            const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+            setConfig(updatedConfig);
+            setSelectedBrand(val);
+        }
+        setNewBrand('');
+    };
+
+    const handleAddModel = () => {
+        const val = newModel.trim().toUpperCase();
+        if (!val || !selectedCat || !selectedBrand) return;
+        if (!modelsForBrand.includes(val)) {
+            const newCatalog = [...catalog, { category: selectedCat, brand: selectedBrand, model: val }];
+            const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+            setConfig(updatedConfig);
+        }
+        setNewModel('');
+    };
+
+    const handleAddCapacity = () => {
+        const val = newCapacity.trim().toUpperCase();
+        if (!val || !selectedCat || !selectedBrand || !selectedModel) return;
+        if (!capacitiesForModel.includes(val)) {
+            // Check if there's an entry without capacity, and update it, otherwise add new
+            let newCatalog = [...catalog];
+            const existingEntryIndex = newCatalog.findIndex(c => c.category === selectedCat && c.brand === selectedBrand && c.model === selectedModel && !c.capacity);
+            if (existingEntryIndex >= 0) {
+                newCatalog[existingEntryIndex] = { ...newCatalog[existingEntryIndex], capacity: val };
+            } else {
+                newCatalog = [...newCatalog, { category: selectedCat, brand: selectedBrand, model: selectedModel, capacity: val }];
+            }
+            
+            const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+            setConfig(updatedConfig);
+        }
+        setNewCapacity('');
+    };
+
+    const handleRemoveCat = (cat: string) => {
+        if (!confirm('¿Eliminar producto y todas sus marcas/modelos?')) return;
+        const newCatalog = catalog.filter(c => c.category !== cat);
+        const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+        setConfig(updatedConfig);
+        if (selectedCat === cat) { setSelectedCat(''); setSelectedBrand(''); setSelectedModel(''); }
+    };
+
+    const handleRemoveBrand = (brand: string) => {
+        if (!confirm('¿Eliminar marca y todos sus modelos?')) return;
+        const newCatalog = catalog.filter(c => !(c.category === selectedCat && c.brand === brand));
+        const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+        setConfig(updatedConfig);
+        if (selectedBrand === brand) { setSelectedBrand(''); setSelectedModel(''); }
+    };
+
+    const handleRemoveModel = (model: string) => {
+        if (!confirm('¿Eliminar modelo y sus capacidades?')) return;
+        const newCatalog = catalog.filter(c => !(c.category === selectedCat && c.brand === selectedBrand && c.model === model));
+        const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+        setConfig(updatedConfig);
+        if (selectedModel === model) { setSelectedModel(''); }
+    };
+
+    const handleRemoveCapacity = (capacity: string) => {
+        let newCatalog = catalog.filter(c => !(c.category === selectedCat && c.brand === selectedBrand && c.model === selectedModel && c.capacity === capacity));
+        // If we removed the last capacity for this model, keep the model entry without capacity
+        if (!newCatalog.some(c => c.category === selectedCat && c.brand === selectedBrand && c.model === selectedModel)) {
+            newCatalog.push({ category: selectedCat, brand: selectedBrand, model: selectedModel });
+        }
+        const updatedConfig = { ...config, productCatalog: newCatalog, productCategories: Array.from(new Set(newCatalog.map(c => c.category))) };
+        setConfig(updatedConfig);
+    };
+
+    const [alertInfo, setAlertInfo] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+    const handleSaveConfigAction = async () => {
+        try {
+            await handleSaveConfig();
+            setAlertInfo({ message: 'Configuración de catálogo guardada con éxito', type: 'success' });
+            setTimeout(() => setAlertInfo(null), 3000);
+        } catch (e) {
+            setAlertInfo({ message: 'Error al guardar la configuración', type: 'error' });
+            setTimeout(() => setAlertInfo(null), 3000);
+        }
+    };
+
+    return (
+        <div className="p-10 space-y-8 relative">
+            {/* Alert Notification */}
+            {alertInfo && (
+                <div className={`fixed top-6 right-6 z-[100] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 transition-all animate-in fade-in slide-in-from-top-4 ${
+                    alertInfo.type === 'success' ? 'bg-emerald-50 border-2 border-emerald-200 text-emerald-800' : 'bg-red-50 border-2 border-red-200 text-red-800'
+                }`}>
+                    <div className={`p-2 rounded-xl ${alertInfo.type === 'success' ? 'bg-emerald-100' : 'bg-red-100'}`}>
+                        <Save className={`w-5 h-5 ${alertInfo.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`} />
+                    </div>
+                    <div>
+                        <h4 className="font-black text-sm uppercase tracking-wider">{alertInfo.type === 'success' ? '¡Éxito!' : 'Error'}</h4>
+                        <p className="text-xs font-bold opacity-80">{alertInfo.message}</p>
+                    </div>
+                </div>
+            )}
+            
+            <div className="flex justify-between items-end border-b-2 pb-4 border-slate-100">
+                <div>
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-3"><Tag className="w-6 h-6 text-emerald-600"/> Catálogo de Equipos</h3>
+                    <p className="text-xs text-slate-500 font-bold uppercase mt-1">Gestione la relación entre Productos, Marcas, Modelos y Capacidades.</p>
+                </div>
+                <button onClick={() => { handleSaveConfigAction(); }} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg hover:bg-emerald-600 transition-all active:scale-95 uppercase tracking-widest text-[10px]">
+                    <Save className="w-4 h-4 text-emerald-400" /> Guardar Cambios
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                {/* PRODUCTOS */}
+                <div className="bg-slate-50 rounded-3xl p-6 border-2 border-slate-100">
+                    <h4 className="font-black text-slate-700 uppercase text-[10px] mb-4">1. Productos</h4>
+                    <div className="flex gap-2 mb-4">
+                        <input value={newCat} onChange={e => setNewCat(e.target.value.toUpperCase())} onKeyPress={e => e.key === 'Enter' && handleAddCat()} placeholder="EJ: LAPTOP..." className="flex-1 border-2 border-white rounded-xl p-2 text-[10px] font-black text-slate-900 focus:border-emerald-500 outline-none uppercase" />
+                        <button onClick={handleAddCat} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-emerald-600 transition-all"><Plus className="w-4 h-4"/></button>
+                    </div>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar flex flex-wrap gap-2 items-start content-start">
+                        {categories.map(c => (
+                            <div key={c} onClick={() => { setSelectedCat(c); setSelectedBrand(''); setSelectedModel(''); }} className={`px-3 py-2 rounded-xl flex items-center gap-2 cursor-pointer border-2 transition-all ${selectedCat === c ? 'bg-emerald-100 border-emerald-400 text-emerald-900' : 'bg-white border-transparent hover:border-slate-200 text-slate-600'}`}>
+                                <span className="font-black text-[9px] uppercase">{c}</span>
+                                <button onClick={(e) => { e.stopPropagation(); handleRemoveCat(c); }} className="text-slate-300 hover:text-red-500"><X className="w-3 h-3"/></button>
+                            </div>
+                        ))}
+                        {categories.length === 0 && <p className="text-[10px] w-full text-slate-400 font-bold text-center py-4">No hay productos</p>}
+                    </div>
+                </div>
+
+                {/* MARCAS */}
+                <div className="bg-slate-50 rounded-3xl p-6 border-2 border-slate-100 opacity-100 transition-opacity">
+                    <h4 className="font-black text-slate-700 uppercase text-[10px] mb-4">2. Marcas {selectedCat && <span className="text-emerald-600">de {selectedCat}</span>}</h4>
+                    <div className="flex gap-2 mb-4">
+                        <input disabled={!selectedCat} value={newBrand} onChange={e => setNewBrand(e.target.value.toUpperCase())} onKeyPress={e => e.key === 'Enter' && handleAddBrand()} placeholder={selectedCat ? "EJ: HP, LENOVO..." : "Seleccione producto"} className="flex-1 border-2 border-white rounded-xl p-2 text-[10px] font-black text-slate-900 focus:border-blue-500 outline-none uppercase disabled:opacity-50" />
+                        <button disabled={!selectedCat} onClick={handleAddBrand} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-blue-600 transition-all disabled:opacity-50"><Plus className="w-4 h-4"/></button>
+                    </div>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar flex flex-wrap gap-2 items-start content-start">
+                        {!selectedCat ? <p className="text-[10px] w-full text-slate-400 font-bold text-center py-4">Seleccione un producto</p> :
+                            brandsForCat.map(b => (
+                                <div key={b} onClick={() => { setSelectedBrand(b); setSelectedModel(''); }} className={`px-3 py-2 rounded-xl flex items-center gap-2 cursor-pointer border-2 transition-all ${selectedBrand === b ? 'bg-blue-100 border-blue-400 text-blue-900' : 'bg-white border-transparent hover:border-slate-200 text-slate-600'}`}>
+                                    <span className="font-black text-[9px] uppercase">{b}</span>
+                                    {b !== 'SIN MARCA' && <button onClick={(e) => { e.stopPropagation(); handleRemoveBrand(b); }} className="text-slate-300 hover:text-red-500"><X className="w-3 h-3"/></button>}
+                                </div>
+                            ))
+                        }
+                    </div>
+                </div>
+
+                {/* MODELOS */}
+                <div className="bg-slate-50 rounded-3xl p-6 border-2 border-slate-100 transition-opacity">
+                    <h4 className="font-black text-slate-700 uppercase text-[10px] mb-4">3. Modelos {selectedBrand && selectedBrand !== 'SIN MARCA' && <span className="text-blue-600">de {selectedBrand}</span>}</h4>
+                    <div className="flex gap-2 mb-4">
+                        <input disabled={!selectedBrand} value={newModel} onChange={e => setNewModel(e.target.value.toUpperCase())} onKeyPress={e => e.key === 'Enter' && handleAddModel()} placeholder={selectedBrand ? "EJ: PAVILION 15..." : "Seleccione marca"} className="flex-1 border-2 border-white rounded-xl p-2 text-[10px] font-black text-slate-900 focus:border-purple-500 outline-none uppercase disabled:opacity-50" />
+                        <button disabled={!selectedBrand} onClick={handleAddModel} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-purple-600 transition-all disabled:opacity-50"><Plus className="w-4 h-4"/></button>
+                    </div>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar flex flex-wrap gap-2 items-start content-start">
+                        {!selectedBrand ? <p className="text-[10px] w-full text-slate-400 font-bold text-center py-4">Seleccione una marca</p> :
+                            modelsForBrand.map(m => (
+                                <div key={m} onClick={() => setSelectedModel(m)} className={`px-3 py-2 rounded-xl flex items-center gap-2 cursor-pointer border-2 transition-all ${selectedModel === m ? 'bg-purple-100 border-purple-400 text-purple-900' : 'bg-white border-transparent hover:border-slate-200 text-slate-600'}`}>
+                                    <span className="font-black text-[9px] uppercase text-slate-700">{m}</span>
+                                    {m !== 'GENERICO' && <button onClick={(e) => { e.stopPropagation(); handleRemoveModel(m); }} className="text-slate-300 hover:text-red-500"><X className="w-3 h-3"/></button>}
+                                </div>
+                            ))
+                        }
+                    </div>
+                </div>
+
+                {/* CAPACIDADES */}
+                <div className="bg-slate-50 rounded-3xl p-6 border-2 border-slate-100 transition-opacity">
+                    <h4 className="font-black text-slate-700 uppercase text-[10px] mb-4">4. Capacidad {selectedModel && selectedModel !== 'GENERICO' && <span className="text-purple-600">de {selectedModel}</span>}</h4>
+                    <div className="flex gap-2 mb-4">
+                        <input disabled={!selectedModel} value={newCapacity} onChange={e => setNewCapacity(e.target.value.toUpperCase())} onKeyPress={e => e.key === 'Enter' && handleAddCapacity()} placeholder={selectedModel ? "EJ: 256GB..." : "Seleccione modelo"} className="flex-1 border-2 border-white rounded-xl p-2 text-[10px] font-black text-slate-900 focus:border-orange-500 outline-none uppercase disabled:opacity-50" />
+                        <button disabled={!selectedModel} onClick={handleAddCapacity} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-orange-600 transition-all disabled:opacity-50"><Plus className="w-4 h-4"/></button>
+                    </div>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar flex flex-wrap gap-2 items-start content-start">
+                        {!selectedModel ? <p className="text-[10px] w-full text-slate-400 font-bold text-center py-4">Seleccione un modelo</p> :
+                            capacitiesForModel.length === 0 ? <p className="text-[10px] w-full text-slate-400 font-bold text-center py-4">Sin capacidades registradas</p> :
+                            capacitiesForModel.map((cap: string) => (
+                                <div key={cap} className="bg-white border-2 border-slate-200 px-3 py-2 rounded-xl flex items-center gap-2 group hover:border-red-400 transition-all">
+                                    <span className="font-black text-[9px] uppercase text-slate-700">{cap}</span>
+                                    <button onClick={() => handleRemoveCapacity(cap)} className="text-slate-300 group-hover:text-red-500"><X className="w-3 h-3"/></button>
+                                </div>
+                            ))
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) => void, onCancel: () => void, isProcessing?: boolean }> = ({ initialData, onSubmit, onCancel, isProcessing }) => {
     const [formData, setFormData] = useState<Supplier>(initialData || { 
         id: Date.now().toString(), ruc: '', razonSocial: '', category: 'MAYORISTA' as any, 
         contactName: '', phone: '', address: '', department: '', province: '', district: '', email: ''
@@ -653,7 +976,9 @@ const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) =
                 province: info.provincia || formData.province,
                 district: info.distrito || formData.district,
             });
-        } catch {}
+        } catch {
+            // Error visual ya no interrumpe el flujo
+        }
     };
     return (
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }} className="space-y-6">
@@ -661,38 +986,46 @@ const SupplierForm: React.FC<{ initialData?: Supplier, onSubmit: (s: Supplier) =
                 <div className="md:col-span-2 space-y-4">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-1">Información Fiscal</h4>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC (11 Dígitos)</label><input value={formData.ruc} onChange={e => setFormData({...formData, ruc: e.target.value.toUpperCase()})} onBlur={handleRucBlur} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-blue-500 outline-none" placeholder="20XXXXXXXXX" required maxLength={11} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC (11 Dígitos)</label><input value={formData.ruc} onChange={e => setFormData({...formData, ruc: e.target.value.toUpperCase()})} onBlur={handleRucBlur} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 focus:bg-white focus:border-blue-500 outline-none" placeholder="20XXXXXXXXX" required maxLength={11} disabled={isProcessing} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Etiqueta Corta</label><input value={formData.shortName || ''} onChange={e => setFormData({...formData, shortName: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="EJ: IMPORTACIONES XYZ" disabled={isProcessing} /></div>
                         <div>
                             <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Categoría Fiscal</label>
-                            <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase text-xs">
+                            <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase text-xs" disabled={isProcessing}>
                                 <option value="MAYORISTA">Importador / Mayorista</option>
                                 <option value="RETAIL">Retail / Tienda Local</option>
                                 <option value="SERVICIOS">Servicios / Consultoría</option>
                             </select>
                         </div>
-                        <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Razón Social Completa</label><input value={formData.razonSocial} onChange={e => setFormData({...formData, razonSocial: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="EMPRESA S.A.C." required /></div>
+                        <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Razón Social Completa</label><input value={formData.razonSocial} onChange={e => setFormData({...formData, razonSocial: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="EMPRESA S.A.C." required disabled={isProcessing} /></div>
                     </div>
                 </div>
                 <div className="md:col-span-2 space-y-4 mt-2">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-1">Ubicación y Contacto</h4>
                     <div className="grid grid-cols-3 gap-3">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dpto.</label><input value={formData.department} onChange={e => setFormData({...formData, department: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Prov.</label><input value={formData.province} onChange={e => setFormData({...formData, province: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dist.</label><input value={formData.district} onChange={e => setFormData({...formData, district: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dpto.</label><input value={formData.department} onChange={e => setFormData({...formData, department: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" disabled={isProcessing} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Prov.</label><input value={formData.province} onChange={e => setFormData({...formData, province: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" disabled={isProcessing} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dist.</label><input value={formData.district} onChange={e => setFormData({...formData, district: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-[10px]" disabled={isProcessing} /></div>
                     </div>
-                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Fiscal Exacta</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" /></div>
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Fiscal Exacta</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" disabled={isProcessing} /></div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Contacto</label><input value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs uppercase" /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" disabled={isProcessing} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs" disabled={isProcessing} /></div>
+                        <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Contacto</label><input value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value.toUpperCase()})} className="w-full border-2 border-gray-100 rounded-xl p-3 bg-slate-50 font-black text-xs uppercase" disabled={isProcessing} /></div>
                     </div>
                 </div>
             </div>
-            <div className="flex gap-4 pt-6"><button type="button" onClick={onCancel} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all">Cancelar</button><button type="submit" className="flex-[2] px-6 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-slate-800 transition-all active:scale-95">Guardar Proveedor</button></div>
+            <div className="flex gap-4 pt-6">
+                <button type="button" onClick={onCancel} disabled={isProcessing} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all disabled:opacity-50">Cancelar</button>
+                <button type="submit" disabled={isProcessing} className="flex-[2] px-6 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2">
+                    {isProcessing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : null}
+                    {isProcessing ? 'Guardando...' : 'Guardar Proveedor'}
+                </button>
+            </div>
         </form>
     );
 };
 
-const IntermediaryForm: React.FC<{ initialData?: Intermediary, onSubmit: (i: Intermediary) => void, onCancel: () => void }> = ({ initialData, onSubmit, onCancel }) => {
+const IntermediaryForm: React.FC<{ initialData?: Intermediary, onSubmit: (i: Intermediary) => void, onCancel: () => void, isProcessing?: boolean }> = ({ initialData, onSubmit, onCancel, isProcessing }) => {
     const [formData, setFormData] = useState<Intermediary>(initialData || { id: Date.now().toString(), docNumber: '', fullName: '', rucNumber: '', phone: '', email: '', address: '' });
     const [loadingDni, setLoadingDni] = useState(false);
     const handleFetchDni = async (dniRaw?: string) => {
@@ -729,24 +1062,31 @@ const IntermediaryForm: React.FC<{ initialData?: Intermediary, onSubmit: (i: Int
                             placeholder="8 dígitos" 
                             required 
                             maxLength={8} 
+                            disabled={isProcessing}
                         />
-                        <button type="button" onClick={() => handleFetchDni()} className="px-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 active:scale-95 transition">
+                        <button type="button" onClick={() => handleFetchDni()} disabled={isProcessing} className="px-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 active:scale-95 transition disabled:opacity-50">
                             <Search className={`w-4 h-4 ${loadingDni ? 'animate-spin' : ''}`} />
                         </button>
                     </div>
                 </div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC 10 (Opcional)</label><input value={formData.rucNumber} onChange={e => setFormData({...formData, rucNumber: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="10XXXXXXXXX" maxLength={11} /></div>
-                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre y Apellidos</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required /></div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required /></div>
-                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Residencia</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">RUC 10 (Opcional)</label><input value={formData.rucNumber} onChange={e => setFormData({...formData, rucNumber: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" placeholder="10XXXXXXXXX" maxLength={11} disabled={isProcessing} /></div>
+                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre y Apellidos</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required disabled={isProcessing} /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required disabled={isProcessing} /></div>
+                <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required disabled={isProcessing} /></div>
+                <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección Residencia</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" required disabled={isProcessing} /></div>
             </div>
-            <div className="flex gap-4 pt-6"><button type="button" onClick={onCancel} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all">Cancelar</button><button type="submit" className="flex-[2] px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-emerald-700 transition-all active:scale-95">Guardar Intermediario</button></div>
+            <div className="flex gap-4 pt-6">
+                <button type="button" onClick={onCancel} disabled={isProcessing} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all disabled:opacity-50">Cancelar</button>
+                <button type="submit" disabled={isProcessing} className="flex-[2] px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-emerald-700 transition-all active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2">
+                    {isProcessing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : null}
+                    {isProcessing ? 'Guardando...' : 'Guardar Intermediario'}
+                </button>
+            </div>
         </form>
     );
 };
 
-const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) => void, onCancel: () => void }> = ({ initialData, onSubmit, onCancel }) => {
+const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) => void, onCancel: () => void, isProcessing?: boolean }> = ({ initialData, onSubmit, onCancel, isProcessing }) => {
     const config = DataService.getConfig();
     const [formData, setFormData] = useState<Employee>(initialData || { 
         id: Date.now().toString(), docNumber: '', fullName: '', phone: '', email: '', 
@@ -756,6 +1096,11 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
         password: ''
     });
     const [loadingDni, setLoadingDni] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '' });
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [passwordError, setPasswordError] = useState('');
+
     const handleFetchDni = async (dniRaw?: string) => {
         const dni = (((dniRaw ?? formData.docNumber)) || '').trim();
         if (!dni || dni.length < 8) return;
@@ -779,7 +1124,29 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
             setLoadingDni(false);
         }
     };
+
+    const handleChangePassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setPasswordError('');
+        if (!passwordData.oldPassword || !passwordData.newPassword) {
+            setPasswordError('Llene todos los campos');
+            return;
+        }
+        setIsChangingPassword(true);
+        try {
+            await BackendService.changeEmployeePassword(formData.id, passwordData.oldPassword, passwordData.newPassword);
+            setShowPasswordModal(false);
+            setPasswordData({ oldPassword: '', newPassword: '' });
+            alert('Contraseña actualizada correctamente');
+        } catch (err: any) {
+            setPasswordError(err?.response?.data?.detail || 'Error al cambiar contraseña');
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
+
     return (
+        <>
         <form onSubmit={(ev) => { ev.preventDefault(); onSubmit(formData); }} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="md:col-span-2 space-y-4">
@@ -814,7 +1181,16 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
                             </select>
                         </div>
                         <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nombre Completo</label><input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required /></div>
-                        <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2 flex items-center gap-2"> <Key className="w-3 h-3"/> Contraseña Acceso</label><input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="••••••••" required={!initialData} /></div>
+                        <div className="md:col-span-2">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 flex items-center gap-2"> <Key className="w-3 h-3"/> Contraseña Acceso</label>
+                            {initialData ? (
+                                <button type="button" onClick={() => setShowPasswordModal(true)} className="w-full border-2 border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl p-3 bg-white font-black transition-colors flex justify-center items-center gap-2 text-xs">
+                                    Cambiar Contraseña
+                                </button>
+                            ) : (
+                                <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="••••••••" required />
+                            )}
+                        </div>
                         <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Teléfono</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
                         <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Correo</label><input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
                         <div className="md:col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Dirección</label><input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase" /></div>
@@ -823,12 +1199,45 @@ const EmployeeForm: React.FC<{ initialData?: Employee, onSubmit: (e: Employee) =
                 <div className="md:col-span-2 space-y-4 mt-2">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-1">Información Laboral</h4>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Sueldo Básico (S/)</label><input type="number" value={formData.baseSalary} onChange={e => setFormData({...formData, baseSalary: Number(e.target.value)})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-blue-600 text-lg" required /></div>
-                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Pensión</label><select value={formData.pensionSystem} onChange={e => setFormData({...formData, pensionSystem: e.target.value as any})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">{Object.values(PensionSystem).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Sueldo Básico (S/)</label><input type="number" value={formData.baseSalary} onChange={e => setFormData({...formData, baseSalary: Number(e.target.value)})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-blue-600 text-lg" required disabled={isProcessing} /></div>
+                        <div><label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Pensión</label><select value={formData.pensionSystem} onChange={e => setFormData({...formData, pensionSystem: e.target.value as any})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs" disabled={isProcessing}>{Object.values(PensionSystem).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                     </div>
                 </div>
             </div>
-            <div className="flex gap-4 pt-6"><button type="button" onClick={onCancel} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all">Cancelar</button><button type="submit" className="flex-[2] px-6 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-700 transition-all active:scale-95">Guardar Colaborador</button></div>
+            <div className="flex gap-4 pt-6">
+                <button type="button" onClick={onCancel} disabled={isProcessing} className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs hover:bg-slate-50 transition-all disabled:opacity-50">Cancelar</button>
+                <button type="submit" disabled={isProcessing} className="flex-[2] px-6 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2">
+                    {isProcessing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : null}
+                    {isProcessing ? 'Guardando...' : 'Guardar Colaborador'}
+                </button>
+            </div>
         </form>
+
+        {showPasswordModal && (
+            <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl">
+                    <h3 className="text-lg font-black text-slate-900 mb-4 uppercase tracking-widest text-center">Cambiar Contraseña</h3>
+                    {passwordError && <p className="text-red-500 text-xs font-bold text-center mb-4">{passwordError}</p>}
+                    <form onSubmit={handleChangePassword} className="space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Contraseña Actual</label>
+                            <input type="password" value={passwordData.oldPassword} onChange={e => setPasswordData({...passwordData, oldPassword: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="••••••••" required disabled={isChangingPassword} />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Nueva Contraseña</label>
+                            <input type="password" value={passwordData.newPassword} onChange={e => setPasswordData({...passwordData, newPassword: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900" placeholder="••••••••" required disabled={isChangingPassword} minLength={6} />
+                        </div>
+                        <div className="flex gap-3 pt-4">
+                            <button type="button" onClick={() => setShowPasswordModal(false)} disabled={isChangingPassword} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-black uppercase text-[10px] hover:bg-slate-200 disabled:opacity-50">Cancelar</button>
+                            <button type="submit" disabled={isChangingPassword} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50">
+                                {isChangingPassword ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : null}
+                                Actualizar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
+        </>
     );
 };

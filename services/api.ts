@@ -14,6 +14,19 @@ const api = axios.create({
   withCredentials: true,
 });
 
+api.interceptors.request.use((config) => {
+  try {
+    const session = localStorage.getItem('mype_session');
+    if (session) {
+      const user = JSON.parse(session);
+      if (user && user.token) {
+        config.headers.Authorization = `Bearer ${user.token}`;
+      }
+    }
+  } catch (e) {}
+  return config;
+});
+
 // Interceptor para manejo de errores global (opcional)
 api.interceptors.response.use(
   (response) => response,
