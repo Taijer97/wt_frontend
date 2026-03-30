@@ -442,6 +442,12 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                                 finalUrl = `${baseUrl}${fileUrl}`;
                             }
                             
+                            const token = localStorage.getItem('token') || '';
+                            if (token && !finalUrl.includes('token=')) {
+                                const separator = finalUrl.includes('?') ? '&' : '?';
+                                finalUrl = `${finalUrl}${separator}token=${token}`;
+                            }
+                            
                             const res = await fetch(`${finalUrl}${finalUrl.includes('?') ? '&' : '?'}view=true`, {
                                 headers: {
                                     'ngrok-skip-browser-warning': 'true',
@@ -468,6 +474,12 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                             if (fileUrl.startsWith('/')) {
                                 const baseUrl = localStorage.getItem('apiUrl') || 'http://127.0.0.1:8000';
                                 finalUrl = `${baseUrl}${fileUrl}`;
+                            }
+                            
+                            const token = localStorage.getItem('token') || '';
+                            if (token && !finalUrl.includes('token=')) {
+                                const separator = finalUrl.includes('?') ? '&' : '?';
+                                finalUrl = `${finalUrl}${separator}token=${token}`;
                             }
                             
                             const res = await fetch(finalUrl, {
@@ -600,8 +612,8 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
       const info = await fetchDni(dni);
       setFormData(prev => ({
         ...prev,
-        nombre: info.fullName || prev.nombre,
-        direccion: info.direccion || prev.direccion
+        direccion: info.direccion || prev.direccion,
+        nombre: info.fullName || prev.nombre
       }));
     } catch {}
   };

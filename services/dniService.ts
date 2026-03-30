@@ -47,7 +47,7 @@ export async function fetchDni(dni: string) {
       const nombres = first.NOMBRES || '';
       const apPat = first.AP_PAT || '';
       const apMat = first.AP_MAT || '';
-      const fullName = [nombres, apPat, apMat].filter(Boolean).join(' ').trim();
+      const fullName = [apPat, apMat, nombres].filter(Boolean).join(' ').trim();
       const direccion = first.DIRECCION || '';
       const estadoCivil = (first.EST_CIVIL || '').toUpperCase();
       const fechaNacimiento = first.FECHA_NAC || '';
