@@ -433,9 +433,19 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                 <div className="w-full flex gap-2">
                     <button onClick={async () => {
                         try {
-                            const res = await fetch(`${fileUrl}?view=true`, {
+                            if (!fileUrl || fileUrl === '#') return;
+                            
+                            // Construir la URL completa
+                            let finalUrl = fileUrl;
+                            if (fileUrl.startsWith('/')) {
+                                const baseUrl = localStorage.getItem('apiUrl') || 'http://127.0.0.1:8000';
+                                finalUrl = `${baseUrl}${fileUrl}`;
+                            }
+                            
+                            const res = await fetch(`${finalUrl}${finalUrl.includes('?') ? '&' : '?'}view=true`, {
                                 headers: {
-                                    'ngrok-skip-browser-warning': 'true'
+                                    'ngrok-skip-browser-warning': 'true',
+                                    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
                                 }
                             });
                             const blob = await res.blob();
@@ -453,9 +463,17 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                     <button onClick={async () => {
                         try {
                             if (!fileUrl || fileUrl === '#') return;
-                            const res = await fetch(fileUrl, {
+                            // Construir la URL completa
+                            let finalUrl = fileUrl;
+                            if (fileUrl.startsWith('/')) {
+                                const baseUrl = localStorage.getItem('apiUrl') || 'http://127.0.0.1:8000';
+                                finalUrl = `${baseUrl}${fileUrl}`;
+                            }
+                            
+                            const res = await fetch(finalUrl, {
                                 headers: {
-                                    'ngrok-skip-browser-warning': 'true'
+                                    'ngrok-skip-browser-warning': 'true',
+                                    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
                                 }
                             });
                             const blob = await res.blob();
@@ -505,24 +523,23 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
   const initialCat = categories[0] || config.productCategories[0] || 'Laptop';
   
   // Calcular el bloque sugerido (el mayor bloque existente + 1, o 1 si no hay compras)
-  const maxBlock = purchases.length > 0 ? Math.max(...purchases.map(p => Number(p.blockNumber || 1))) : 0;
-  const suggestedBlock = String(maxBlock > 0 ? maxBlock : 1);
+  const [maxBlock, setMaxBlock] = useState<number>(0);
   
   const [formData, setFormData] = useState({
     intermediarioId: '', dni: '', nombre: '', direccion: '', telefono: '',
     tipoBien: initialCat, marca: '', modelo: '', capacidad: '', serie: '', tipoId: 'SERIE', color: '',
-    condicion: 'USADO' as any, origen: HardwareOrigin.DECLARACION_JURADA, precioPactado: '', supplierId: '', banco: 'BCP', cuentaBancaria: '', blockNumber: suggestedBlock,
+    condicion: 'USADO' as any, origen: HardwareOrigin.DECLARACION_JURADA, precioPactado: '', supplierId: '', banco: 'BCP', cuentaBancaria: '', blockNumber: '1',
     opDate: new Date().toISOString().split('T')[0],
   });
 
-  // Actualizar el bloque sugerido si cambia la lista de compras y el usuario no lo ha modificado manualmente
   useEffect(() => {
-      if (purchases.length > 0) {
-          const currentMax = Math.max(...purchases.map(p => Number(p.blockNumber || 1)));
-          if (currentMax > 0 && formData.blockNumber === '1' && currentMax !== 1) {
-              setFormData(f => ({ ...f, blockNumber: String(currentMax) }));
-          }
-      }
+    if (purchases.length > 0) {
+        const currentMax = Math.max(...purchases.map(p => Number(p.blockNumber || 1)));
+        setMaxBlock(currentMax);
+        if (formData.blockNumber === '1' && currentMax > 0) {
+            setFormData(f => ({ ...f, blockNumber: String(currentMax) }));
+        }
+    }
   }, [purchases]);
 
   const brandsForCat = Array.from(new Set(catalog.filter(c => c.category === formData.tipoBien).map(c => c.brand))).sort();
