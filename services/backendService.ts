@@ -39,6 +39,15 @@ const clearCache = (keyPattern: string) => {
   });
 };
 
+const cacheKeyFromParams = (prefix: string, params: Record<string, any>) => {
+  const normalized = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+    .join('&');
+  return `${prefix}${normalized ? `_${normalized}` : ''}`;
+};
+
 export const BackendService = {
   _statusFromBackend(s?: string) {
     if (!s) return undefined as any;
@@ -362,15 +371,24 @@ export const BackendService = {
     return res.data;
   },
 
-  async getPurchases(params?: { type?: string; status?: string; q?: string; limit?: number; offset?: number }, forceRefresh = false) {
-    // Si hay parámetros, no usamos cache o usamos una clave específica
+  async getPurchases(params?: { type?: string; status?: string; q?: string; block_number?: number; op_date?: string; limit?: number; offset?: number }, forceRefresh = false) {
     if (params && Object.keys(params).length > 0) {
-      const res = await api.get('/purchases', { params });
-      return res.data;
+      const key = cacheKeyFromParams('purchases', params as any);
+      return getCached(key, async () => {
+        const res = await api.get('/purchases', { params });
+        return res.data;
+      }, forceRefresh);
     }
     return getCached('purchases_all', async () => {
       const res = await api.get('/purchases');
       return res.data;
+    }, forceRefresh);
+  },
+  async getPurchaseBlocks(params?: { type?: string; status?: string }, forceRefresh = false): Promise<number[]> {
+    const key = cacheKeyFromParams('purchase_blocks', (params || {}) as any);
+    return getCached(key, async () => {
+      const res = await api.get('/purchases/blocks', { params });
+      return res.data as number[];
     }, forceRefresh);
   },
   async createPurchase(payload: {
@@ -386,6 +404,7 @@ export const BackendService = {
     productBrand?: string | null;
     productModel?: string | null;
     productSerial?: string | null;
+    productIdType?: string | null;
     productCondition?: string | null;
     sellerDocNumber?: string | null;
     sellerFullName?: string | null;
@@ -411,6 +430,7 @@ export const BackendService = {
       product_brand: payload.productBrand,
       product_model: payload.productModel,
       product_serial: payload.productSerial,
+      product_id_type: payload.productIdType,
       product_condition: payload.productCondition,
       seller_doc_number: payload.sellerDocNumber,
       seller_full_name: payload.sellerFullName,
@@ -426,7 +446,7 @@ export const BackendService = {
         id_type: it.idType
       })),
     });
-    clearCache('purchases_all');
+    clearCache('purchases');
     return res.data;
   },
   async updatePurchase(id: string, payload: Partial<{
@@ -465,7 +485,7 @@ export const BackendService = {
       date: payload.date,
       block_number: payload.blockNumber
     });
-    clearCache('purchases_all');
+    clearCache('purchases');
     return res.data;
   },
   async generatePurchaseDoc(id: string, docKind: 'contract' | 'dj') {
@@ -474,7 +494,7 @@ export const BackendService = {
   },
   async deletePurchase(id: string) {
     const res = await api.delete(`/purchases/${id}`);
-    clearCache('purchases_all');
+    clearCache('purchases');
     return res.data;
   },
   async uploadPurchaseFile(id: string, file: File, docKind?: 'voucher' | 'contract' | 'dj' | 'general') {
@@ -488,7 +508,7 @@ export const BackendService = {
       withCredentials: true,
       headers: { 'ngrok-skip-browser-warning': 'true' }
     });
-    clearCache('purchases_all'); // Update url potentially
+    clearCache('purchases');
     return res.data as { url: string; filename: string; doc_kind?: string };
   },
 

@@ -16,6 +16,7 @@ export const SalesHistoryModule: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSale, setSelectedSale] = useState<Transaction | null>(null);
     const [isLoadingData, setIsLoadingData] = useState(true);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const config = DataService.getConfig();
 
     const canDelete = DataService.checkPermission('sales', 'delete');
@@ -33,7 +34,7 @@ export const SalesHistoryModule: React.FC = () => {
         }
 
         try {
-            const backendSales = await BackendService.getTransactions('sale');
+            const backendSales = await BackendService.getTransactions('sale', force);
             setSales(backendSales);
         } catch (error) {
             setSales(DataService.getTransactions('sale'));
@@ -47,11 +48,24 @@ export const SalesHistoryModule: React.FC = () => {
         window.print();
     };
 
-    const handleDelete = (id: string, e: React.MouseEvent) => {
+    const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
+        if (!canDelete) {
+            alert('No tiene permisos para anular ventas.');
+            return;
+        }
         if (confirm('¿Está seguro de ANULAR esta venta? Los productos volverán al stock disponible.')) {
-            DataService.deleteTransaction('sale', id);
-            refresh(true);
+            setDeletingId(id);
+            try {
+                await BackendService.deleteTransaction(id);
+                await refresh(true);
+            } catch {
+                DataService.deleteTransaction('sale', id);
+                await refresh(true);
+                alert('No se pudo anular en el servidor. Se aplicó un borrado local (offline).');
+            } finally {
+                setDeletingId(null);
+            }
         }
     };
 
@@ -146,7 +160,8 @@ export const SalesHistoryModule: React.FC = () => {
                                             {canDelete && (
                                                 <button 
                                                     onClick={(e) => handleDelete(sale.id, e)}
-                                                    className="p-2.5 bg-red-50 text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm"
+                                                    disabled={deletingId === sale.id}
+                                                    className="p-2.5 bg-red-50 text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title="Anular Venta"
                                                 >
                                                     <Trash2 className="w-4 h-4" />

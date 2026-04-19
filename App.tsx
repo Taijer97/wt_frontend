@@ -89,27 +89,24 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout;
     let heartbeatInterval: NodeJS.Timeout;
     let inactivityTimeout: NodeJS.Timeout;
 
     const connect = () => {
-      const isDev = !!(import.meta as any).env?.DEV;
       const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+      const token = currentUser.token;
       
       // Determine correct protocol for WebSockets (ws or wss) based on the connection protocol (http or https)
-      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      
-      // Construir la URL del WS dependiendo de si es dev o prod
-      let wsUrl = '';
-      if (isDev) {
-         wsUrl = `${wsProtocol}//${window.location.host}/ws/updates`;
-      } else {
-         // Si la base es https://, usar wss://
-         const cleanBase = base.replace(/^https?:\/\//, '');
-         const apiProtocol = base.startsWith('https') ? 'wss:' : 'ws:';
-         wsUrl = `${apiProtocol}//${cleanBase}/ws/updates`;
+      const cleanBase = base.replace(/^https?:\/\//, '');
+      const apiProtocol = base.startsWith('https') ? 'wss:' : 'ws:';
+      let wsUrl = `${apiProtocol}//${cleanBase}/ws/updates`;
+
+      if (token) {
+        const sep = wsUrl.includes('?') ? '&' : '?';
+        wsUrl = `${wsUrl}${sep}token=${encodeURIComponent(token)}`;
       }
       
       console.log('Iniciando conexión WS a:', wsUrl);
@@ -138,6 +135,11 @@ const App: React.FC = () => {
       };
 
       ws.onclose = (e) => {
+        if (e.code === 1008) {
+          console.log('WS cerrado por sesión inválida, solicitando re-login.');
+          handleLogout();
+          return;
+        }
         console.log('WS cerrado, intentando reconectar en 3s...', e.reason);
         clearInterval(heartbeatInterval);
         reconnectTimeout = setTimeout(connect, 3000);

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Upload, FileText, AlertTriangle, User, Monitor, DollarSign, Clock, CheckCircle, Search, Paperclip, Printer, ScrollText, X, ShieldCheck, Camera, FileDigit, FileType, History, Tag, Package, Trash2, Pencil, Download, Eye, ArrowRight, RefreshCw, Edit3 } from 'lucide-react';
+import { Save, Upload, FileText, AlertTriangle, User, Monitor, DollarSign, Clock, CheckCircle, Search, Paperclip, Printer, ScrollText, X, ShieldCheck, Camera, FileDigit, FileType, History, Tag, Package, Trash2, Pencil, Download, Eye, ArrowRight, RefreshCw, Edit3, ChevronLeft, ChevronRight, IdCard, Phone } from 'lucide-react';
 import { CivilStatus, HardwareOrigin, PurchaseEntry, PurchaseStatus, AppConfig, Employee, Intermediary, Supplier } from '../types';
 import { DataService } from '../services/dataService';
 import { fetchDni } from '../services/dniService';
@@ -31,6 +31,14 @@ const CustomAlert = ({ message, type, onClose }: { message: string, type: 'succe
 
 const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Intermediary[], onClose: () => void, onSave: (data: any) => Promise<void> }> = ({ purchase, intermediaries, onClose, onSave }) => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const toDateInputValue = (value?: string) => {
+        if (!value) return new Date().toISOString().split('T')[0];
+        const raw = String(value);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return new Date().toISOString().split('T')[0];
+        return parsed.toISOString().split('T')[0];
+    };
 
     useEffect(() => {
         BackendService.getSuppliers().then(sups => {
@@ -52,7 +60,7 @@ const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Int
         baseAmount: purchase.priceAgreed || 0,
         intermediaryId: purchase.intermediaryId || '',
         supplierId: purchase.supplierId || '',
-        date: purchase.date || new Date().toISOString().split('T')[0],
+        date: toDateInputValue(purchase.date),
         blockNumber: purchase.blockNumber || 1
     });
     const [isSaving, setIsSaving] = useState(false);
@@ -169,6 +177,7 @@ export const PurchaseModule: React.FC = () => {
   const [alertInfo, setAlertInfo] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [editingPurchase, setEditingPurchase] = useState<PurchaseEntry | null>(null);
+  const [pendingRefreshKey, setPendingRefreshKey] = useState(0);
 
   const canCreate = DataService.checkPermission('purchases_ruc10', 'create');
   const canUpdate = DataService.checkPermission('purchases_ruc10', 'update');
@@ -215,8 +224,15 @@ export const PurchaseModule: React.FC = () => {
     }
   };
 
-  const mapPurchasesFromBackend = (list: any[]): PurchaseEntry[] => {
-      return list.map((p: any) => ({
+  const normalizePurchaseList = (list: any): any[] => {
+    if (Array.isArray(list)) return list;
+    if (Array.isArray(list?.items)) return list.items;
+    if (Array.isArray(list?.data)) return list.data;
+    return [];
+  };
+
+  const mapPurchasesFromBackend = (list: any): PurchaseEntry[] => {
+      return normalizePurchaseList(list).map((p: any) => ({
         id: String(p.id),
         date: p.date,
         status: p.status === 'COMPLETED' ? PurchaseStatus.COMPLETED : PurchaseStatus.PENDING_DOCS,
@@ -267,6 +283,43 @@ export const PurchaseModule: React.FC = () => {
       }));
   };
 
+  const fetchPendingPurchasesPage = async (limit: number, offset: number, force = false, opts?: { q?: string; blockNumber?: number; opDate?: string }) => {
+    const candidates: Array<{ status?: string }> = [
+      { status: 'PENDING_DOCS' },
+      { status: 'PENDING' },
+      {},
+    ];
+
+    const tried = new Set<string>();
+    const tryFetch = async (status?: string) => {
+      const key = status ?? '__none__';
+      if (tried.has(key)) return null;
+      tried.add(key);
+      const list = await BackendService.getPurchases({
+        type: 'RUC10',
+        ...(status ? { status } : {}),
+        ...(opts?.q ? { q: opts.q } : {}),
+        ...(opts?.blockNumber !== undefined ? { block_number: opts.blockNumber } : {}),
+        ...(opts?.opDate ? { op_date: opts.opDate } : {}),
+        limit,
+        offset
+      } as any, force);
+      const mapped = mapPurchasesFromBackend(list);
+      return mapped.filter(p => p.status === PurchaseStatus.PENDING_DOCS);
+    };
+
+    for (const c of candidates) {
+      const res = await tryFetch(c.status);
+      if (res && res.length > 0) return res;
+    }
+
+    if (offset > 0) {
+      const fallback = await tryFetch(undefined);
+      return fallback || [];
+    }
+    return [];
+  };
+
 
 
   const handleDelete = (id: string) => {
@@ -291,7 +344,7 @@ export const PurchaseModule: React.FC = () => {
       </div>
 
       {activeTab === 'register' && <RegisterForm onSuccess={() => { setAlertInfo({ message: 'Equipo Registrado', type: 'success' }); loadPurchases(true); setActiveTab('pending'); }} intermediaries={intermediaries} showAlert={(m, t) => setAlertInfo({ message: m, type: t })} purchases={purchases} />}
-      {activeTab === 'pending' && <PendingList purchases={purchases} onUpdate={() => loadPurchases(true)} onPreview={setPreviewDoc} showAlert={(m, t) => setAlertInfo({ message: m, type: t })} isLoading={isLoadingData} onEdit={setEditingPurchase} onDelete={handleDelete} canDelete={canDelete} canUpdate={canUpdate} />}
+      {activeTab === 'pending' && <PendingList purchases={purchases} onUpdate={() => { setPendingRefreshKey(k => k + 1); loadPurchases(true); }} onPreview={setPreviewDoc} showAlert={(m, t) => setAlertInfo({ message: m, type: t })} isLoading={isLoadingData} onEdit={setEditingPurchase} onDelete={handleDelete} canDelete={canDelete} canUpdate={canUpdate} fetchPage={fetchPendingPurchasesPage} refreshKey={pendingRefreshKey} />}
       {activeTab === 'history' && <PurchaseHistory purchases={purchases} onUpdate={() => loadPurchases(true)} canDelete={canDelete} canUpdate={canUpdate} canRead={canRead} onDelete={handleDelete} onViewSupport={setViewingPurchase} isLoading={isLoadingData} onEdit={setEditingPurchase} />}
 
       {/* MODAL DE EDICIÓN (RUC 10) */}
@@ -668,8 +721,14 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
       
       const currentSerial = formData.serie.trim().toUpperCase();
       if(currentSerial) {
-          const exists = purchases.some(p => p.productSerial?.trim().toUpperCase() === currentSerial);
-          if(exists) {
+          const matches = purchases.filter(p => p.productSerial?.trim().toUpperCase() === currentSerial);
+          if(matches.length > 0) {
+              const newSupplierId = String(formData.supplierId || '').trim();
+              const sameOriginStore = matches.some(p => String(p.supplierId || '').trim() === newSupplierId);
+              if (sameOriginStore) {
+                  showAlert("Serie repetida en la misma tienda de origen. Cambie la tienda de origen o comuníquese con el administrador.", "error");
+                  return;
+              }
               setShowDuplicateWarning(true);
               return; // Detiene el flujo normal y muestra la alerta
           }
@@ -720,8 +779,20 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
                 </div>
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2 md:col-span-1"><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Número DNI</label><input name="dni" value={formData.dni} onChange={handleChange} onBlur={handleDniBlur} required className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-emerald-500" maxLength={8} disabled={activeSection !== 'vendedor'} /></div>
-                        <div className="col-span-2 md:col-span-1"><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Número de Celular</label><input name="telefono" value={formData.telefono} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-emerald-500" disabled={activeSection !== 'vendedor'} /></div>
+                        <div className="col-span-2 md:col-span-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+                                <IdCard className="w-3.5 h-3.5 text-emerald-500" />
+                                Número DNI
+                            </label>
+                            <input name="dni" value={formData.dni} onChange={handleChange} onBlur={handleDniBlur} required className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-emerald-500" maxLength={8} disabled={activeSection !== 'vendedor'} />
+                        </div>
+                        <div className="col-span-2 md:col-span-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+                                <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                                Número de Celular
+                            </label>
+                            <input name="telefono" value={formData.telefono} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-emerald-500" disabled={activeSection !== 'vendedor'} />
+                        </div>
                         <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Nombre Completo</label><input name="nombre" value={formData.nombre} onChange={handleChange} required className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-emerald-500" disabled={activeSection !== 'vendedor'} /></div>
                         <div className="col-span-2"><label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Domicilio Actual</label><input name="direccion" value={formData.direccion} onChange={handleChange} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase outline-none focus:bg-white focus:border-emerald-500" disabled={activeSection !== 'vendedor'} /></div>
                     </div>
@@ -912,6 +983,15 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
         );
     });
 
+    const sortedHistory = filteredHistory.slice().sort((a, b) => {
+        const blockA = Number(a.blockNumber ?? 1) || 1;
+        const blockB = Number(b.blockNumber ?? 1) || 1;
+        if (blockA !== blockB) return blockB - blockA;
+        const timeA = new Date(a.date).getTime() || 0;
+        const timeB = new Date(b.date).getTime() || 0;
+        return timeB - timeA;
+    });
+
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center bg-slate-50 border-2 border-slate-100 px-4 py-2 focus-within:border-emerald-400 transition-colors">
@@ -954,7 +1034,7 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
                                     </td>
                                 </tr>
                             ))
-                        ) : filteredHistory.length === 0 ? (<tr><td colSpan={7} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Bandeja de historial vacía.</td></tr>) : filteredHistory.map(item => (
+                        ) : sortedHistory.length === 0 ? (<tr><td colSpan={7} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Bandeja de historial vacía.</td></tr>) : sortedHistory.map(item => (
                             <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
                                 <td className="px-8 py-5">
                                     <span className="bg-slate-900 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">B{item.blockNumber || 1}</span>
@@ -995,17 +1075,64 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
     );
 };
 
-const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void, showAlert: (m: string, t: 'success' | 'error') => void, isLoading?: boolean, onEdit: (p: PurchaseEntry) => void, onDelete: (id: string) => void, canDelete: boolean, canUpdate: boolean }> = ({ purchases, onUpdate, onPreview, showAlert, isLoading, onEdit, onDelete, canDelete, canUpdate }) => {
-    const pending = purchases.filter(p => p.status === PurchaseStatus.PENDING_DOCS);
+const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void, showAlert: (m: string, t: 'success' | 'error') => void, isLoading?: boolean, onEdit: (p: PurchaseEntry) => void, onDelete: (id: string) => void, canDelete: boolean, canUpdate: boolean, fetchPage?: (limit: number, offset: number, force?: boolean, opts?: { q?: string; blockNumber?: number; opDate?: string }) => Promise<PurchaseEntry[]>, refreshKey?: number }> = ({ purchases, onUpdate, onPreview, showAlert, isLoading, onEdit, onDelete, canDelete, canUpdate, fetchPage, refreshKey }) => {
+    const [pageSize, setPageSize] = useState<10 | 50 | 100>(10);
+    const [page, setPage] = useState(1);
+    const [pagePurchases, setPagePurchases] = useState<PurchaseEntry[]>([]);
+    const [isPageLoading, setIsPageLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
+    const [pageError, setPageError] = useState(false);
+    const [allBlocks, setAllBlocks] = useState<string[]>([]);
+    
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterBlock, setFilterBlock] = useState('');
+    const [filterDate, setFilterDate] = useState('');
+
+    useEffect(() => {
+        if (!fetchPage) return;
+        BackendService.getPurchaseBlocks({ type: 'RUC10', status: 'PENDING' }).then(list => {
+            setAllBlocks((list || []).map(n => String(n)).sort((a, b) => Number(a) - Number(b)));
+        }).catch(() => {
+            setAllBlocks([]);
+        });
+    }, [fetchPage, refreshKey]);
+
+    useEffect(() => {
+        if (!fetchPage) return;
+        let cancelled = false;
+        setIsPageLoading(true);
+        fetchPage(pageSize + 1, (page - 1) * pageSize, false, { q: searchQuery || undefined, blockNumber: filterBlock ? Number(filterBlock) : undefined, opDate: filterDate || undefined }).then(list => {
+            if (cancelled) return;
+            if (list.length === 0 && page > 1) {
+                showAlert('No hay más registros para mostrar.', 'success');
+                setPage(p => Math.max(1, p - 1));
+                return;
+            }
+            setPagePurchases(list.slice(0, pageSize));
+            setHasMore(list.length > pageSize);
+            setPageError(false);
+        }).catch(() => {
+            if (cancelled) return;
+            setPagePurchases([]);
+            setHasMore(false);
+            setPageError(true);
+            showAlert('No se pudieron cargar los pendientes desde el servidor. Mostrando datos en modo local.', 'error');
+        }).finally(() => {
+            if (cancelled) return;
+            setIsPageLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchPage, pageSize, page, refreshKey, searchQuery, filterBlock, filterDate]);
+
+    const pending = fetchPage && !pageError ? pagePurchases : purchases.filter(p => p.status === PurchaseStatus.PENDING_DOCS);
     const [selected, setSelected] = useState<PurchaseEntry | null>(null);
     const [files, setFiles] = useState({ v: null as string | null, c: null as string | null, d: null as string | null });
     const [rawFiles, setRawFiles] = useState<{ v: File | null, c: File | null, d: File | null }>({ v: null, c: null, d: null });
     const [loading, setLoading] = useState(false);
-    
-    // Filtros
-    const [searchQuery, setSearchQuery] = useState('');
-    const [filterBlock, setFilterBlock] = useState('');
-    const [filterDate, setFilterDate] = useState('');
+
+    const showLoading = Boolean(isLoading) || isPageLoading;
 
     const filteredPending = pending.filter(p => {
         const matchesSearch = 
@@ -1019,7 +1146,18 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
         return matchesSearch && matchesBlock && matchesDate;
     });
 
-    const uniqueBlocks = Array.from(new Set(pending.map(p => String(p.blockNumber || 1)))).sort((a, b) => Number(a) - Number(b));
+    const sortedPending = filteredPending.slice().sort((a, b) => {
+        const blockA = Number(a.blockNumber ?? 1) || 1;
+        const blockB = Number(b.blockNumber ?? 1) || 1;
+        if (blockA !== blockB) return blockB - blockA;
+        const timeA = new Date(a.date).getTime() || 0;
+        const timeB = new Date(b.date).getTime() || 0;
+        return timeB - timeA;
+    });
+
+    const uniqueBlocks = (fetchPage && !pageError && allBlocks.length > 0)
+        ? allBlocks
+        : Array.from(new Set(pending.map(p => String(p.blockNumber || 1)))).sort((a, b) => Number(a) - Number(b));
 
     const fmtDateEs = (iso?: string) => {
         const dt = iso ? new Date(iso) : new Date();
@@ -1119,7 +1257,8 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
         }
     };
 
-    if(pending.length === 0) return <div className="p-24 text-center text-slate-300 font-black uppercase border-4 border-dashed rounded-[3rem] bg-white flex flex-col items-center gap-4"><Package className="w-12 h-12 opacity-30"/><p className="tracking-[0.2em]">Sin expedientes RUC 10 pendientes de sustentar.</p></div>;
+    const hasActiveFilters = Boolean(searchQuery || filterBlock || filterDate);
+    if(!showLoading && pending.length === 0 && !hasActiveFilters) return <div className="p-24 text-center text-slate-300 font-black uppercase border-4 border-dashed rounded-[3rem] bg-white flex flex-col items-center gap-4"><Package className="w-12 h-12 opacity-30"/><p className="tracking-[0.2em]">Sin expedientes RUC 10 pendientes de sustentar.</p></div>;
 
     return (
         <div className="space-y-6">
@@ -1130,16 +1269,17 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                         type="text" 
                         placeholder="Buscar por DNI, Vendedor, Marca, Modelo o Serie..." 
                         value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
+                        onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                         className="bg-transparent border-none outline-none w-full ml-3 text-sm font-bold text-slate-700 placeholder-slate-400"
                     />
                 </div>
                 <div className="flex gap-4">
+                    
                     <div className="flex flex-col">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-1">Filtrar Bloque</label>
                         <select 
                             value={filterBlock} 
-                            onChange={e => setFilterBlock(e.target.value)}
+                            onChange={e => { setFilterBlock(e.target.value); setPage(1); }}
                             className="bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-orange-400 font-black text-slate-700 text-sm"
                         >
                             <option value="">Todos los Bloques</option>
@@ -1151,10 +1291,53 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                         <input 
                             type="date" 
                             value={filterDate} 
-                            onChange={e => setFilterDate(e.target.value)}
+                            onChange={e => { setFilterDate(e.target.value); setPage(1); }}
                             className="bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-orange-400 font-black text-slate-700 text-sm"
                         />
                     </div>
+                    {fetchPage && !pageError && (
+                        <div className="flex flex-col">
+                            <label className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-1">Mostrar</label>
+                            <select
+                                value={pageSize}
+                                onChange={e => { setPage(1); setPageSize(Number(e.target.value) as any); }}
+                                className="bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-orange-400 font-black text-slate-700 text-sm"
+                            >
+                                <option value={10}>10</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                            </select>
+                        </div>
+                    )}
+                    {fetchPage && !pageError && (
+                        <div className="flex items-end">
+                            <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-100 rounded-xl p-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page <= 1 || showLoading}
+                                    aria-label="Página anterior"
+                                    title="Página anterior"
+                                    className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <div className="h-9 px-3 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black text-[10px] uppercase tracking-widest">
+                                    {page}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setPage(p => p + 1)}
+                                    disabled={!hasMore || showLoading}
+                                    aria-label="Página siguiente"
+                                    title="Página siguiente"
+                                    className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -1173,7 +1356,7 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {isLoading ? (
+                            {showLoading ? (
                                 // SKELETON LOADER
                                 Array.from({ length: 3 }).map((_, i) => (
                                     <tr key={`skeleton-${i}`} className="animate-pulse">
@@ -1195,23 +1378,48 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                                         <td className="px-6 py-4"><div className="h-8 w-24 bg-slate-200 rounded-xl mx-auto"></div></td>
                                     </tr>
                                 ))
-                            ) : filteredPending.length === 0 ? (
+                            ) : sortedPending.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="p-12 text-center text-slate-400 font-bold">No se encontraron expedientes con los filtros actuales.</td>
                                 </tr>
-                            ) : filteredPending.map(p => (
+                            ) : sortedPending.map(p => {
+                                const hasSupplier = Boolean(p.supplierShortName || p.supplierName);
+                                const supplierKey = String(p.supplierId || p.supplierShortName || p.supplierName || '');
+                                const supplierTagStyles = [
+                                    'bg-purple-100 text-purple-700 border-purple-200',
+                                    'bg-emerald-100 text-emerald-700 border-emerald-200',
+                                    'bg-amber-100 text-amber-700 border-amber-200',
+                                    'bg-sky-100 text-sky-700 border-sky-200',
+                                ];
+                                let idx = 0;
+                                if (hasSupplier && supplierKey) {
+                                    let h = 0;
+                                    for (let i = 0; i < supplierKey.length; i++) h = (h * 31 + supplierKey.charCodeAt(i)) | 0;
+                                    idx = Math.abs(h) % supplierTagStyles.length;
+                                }
+                                const tagCls = hasSupplier ? supplierTagStyles[idx] : '';
+                                return (
                                 <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
                                     <td className="px-6 py-4">
                                         <span className="bg-slate-900 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase shadow-sm">B{p.blockNumber || 1}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="font-black text-slate-900 uppercase text-xs">{p.providerName}</div>
-                                        <div className="text-[10px] font-bold text-slate-500">{p.providerDni}</div>
-                                        <div className="text-[9px] text-slate-400 mt-1">{p.providerPhone}</div>
+                                        <div className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                                            <User className="w-3 h-3 text-slate-400" />
+                                            <span>{p.providerName}</span>
+                                        </div>
+                                        <div className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                            <IdCard className="w-3 h-3 text-slate-400" />
+                                            <span>{p.providerDni}</span>
+                                        </div>
+                                        <div className="text-[9px] text-slate-400 mt-1 flex items-center gap-1.5">
+                                            <Phone className="w-3 h-3 text-slate-300" />
+                                            <span>{p.providerPhone || '-'}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         {p.supplierShortName || p.supplierName ? (
-                                            <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-3 py-1 rounded-full uppercase border border-purple-200 shadow-sm whitespace-nowrap">
+                                            <span className={`${tagCls} text-[10px] font-black px-3 py-1 rounded-full uppercase border shadow-sm whitespace-nowrap`}>
                                                 {p.supplierShortName || p.supplierName}
                                             </span>
                                         ) : (
@@ -1221,13 +1429,14 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase border border-blue-200">{p.productType || 'SIN CATEGORÍA'}</span>
+                                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 uppercase border border-indigo-200">{p.productBrand || 'SIN MARCA'}</span>
                                             <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
                                                 p.productCondition === 'NUEVO' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                                                 p.productCondition === 'REACONDICIONADO' ? 'bg-purple-100 text-purple-700 border-purple-200' :
                                                 'bg-slate-100 text-slate-700 border-slate-200'
                                             }`}>{p.productCondition}</span>
                                         </div>
-                                        <div className="font-black text-slate-900 uppercase text-xs">{p.productBrand} {p.productModel}</div>
+                                        <div className="font-black text-slate-900 uppercase text-xs">{p.productModel}</div>
                                         <div className="font-mono text-[9px] font-black text-slate-400 uppercase mt-1">S/N: {p.productSerial}</div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -1287,7 +1496,8 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

@@ -60,7 +60,23 @@ export const DataService = {
     if (idx >= 0) list[idx] = p; else list.push(p);
     localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(list));
   },
-  getSuppliers: () => JSON.parse(localStorage.getItem(LS_KEYS.SUPPLIERS) || '[]') as Supplier[],
+  getSuppliers: () => {
+    const raw = JSON.parse(localStorage.getItem(LS_KEYS.SUPPLIERS) || '[]') as any[];
+    return raw.map((s: any) => ({
+      id: String(s.id),
+      ruc: s.ruc || '',
+      razonSocial: s.razonSocial ?? s.name ?? '',
+      shortName: s.shortName ?? s.short_name ?? '',
+      contactName: s.contactName ?? s.contact ?? '',
+      phone: s.phone ?? '',
+      email: s.email ?? '',
+      address: s.address ?? '',
+      department: s.department ?? '',
+      province: s.province ?? '',
+      district: s.district ?? '',
+      category: (s.category ?? 'MAYORISTA'),
+    })) as Supplier[];
+  },
   saveSupplier: (s: Supplier) => {
     const list = DataService.getSuppliers();
     const idx = list.findIndex(i => i.id === s.id);

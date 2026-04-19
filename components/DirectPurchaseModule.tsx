@@ -109,19 +109,7 @@ export const DirectPurchaseModule: React.FC = () => {
 
         try {
             const sups = await BackendService.getSuppliers();
-            setSuppliers(sups.map((s: any) => ({
-                id: String(s.id),
-                ruc: s.ruc,
-                razonSocial: s.name,
-                contactName: s.contact || '',
-                phone: '',
-                email: '',
-                address: '',
-                department: '',
-                province: '',
-                district: '',
-                category: 'MAYORISTA'
-            })));
+            setSuppliers(sups);
         } catch {
             setSuppliers(DataService.getSuppliers());
         }
@@ -335,7 +323,7 @@ export const DirectPurchaseModule: React.FC = () => {
                                     <label className="block text-[10px] font-black text-slate-500 uppercase">Proveedor Mayorista</label>
                                     <select required value={selectedSupplierId} onChange={e => setSelectedSupplierId(e.target.value)} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 text-slate-900 font-black uppercase outline-none focus:bg-white focus:border-blue-500 transition-all">
                                         <option value="">Seleccione...</option>
-                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.razonSocial} (RUC: {s.ruc})</option>)}
+                                        {suppliers.map(s => <option key={s.id} value={s.id}>{(s.shortName || s.razonSocial || '').toUpperCase()} (RUC: {s.ruc})</option>)}
                                     </select>
                                 </div>
                                 <div className="space-y-2">

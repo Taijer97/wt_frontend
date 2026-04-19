@@ -6,7 +6,7 @@ const api = axios.create({
   // En desarrollo usamos rutas relativas para que Vite proxy resuelva CORS.
   // En producción usamos la variable VITE_API_BASE_URL.
   baseURL: isDev ? '' : ((import.meta as any).env?.VITE_API_BASE_URL || 'http://100.116.47.110:8000'),
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'ngrok-skip-browser-warning': 'true',

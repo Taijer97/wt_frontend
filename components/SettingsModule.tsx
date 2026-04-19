@@ -107,20 +107,7 @@ export const SettingsModule: React.FC = () => {
             // Fetch other data
             try {
                 const sups = await BackendService.getSuppliers(true); // force refresh
-                setSuppliers(sups.map((s: any) => ({
-                    id: String(s.id),
-                    ruc: s.ruc,
-                    razonSocial: s.razonSocial || s.name,
-                    shortName: s.shortName || s.short_name || '',
-                    contactName: s.contactName || s.contact || '',
-                    phone: s.phone || '',
-                    email: s.email || '',
-                    address: s.address || '',
-                    department: s.department || '',
-                    province: s.province || '',
-                    district: s.district || '',
-                    category: s.category || 'MAYORISTA'
-                })));
+                setSuppliers(sups);
             } catch { setSuppliers(DataService.getSuppliers()); }
             
             try {

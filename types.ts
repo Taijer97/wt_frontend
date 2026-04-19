@@ -259,6 +259,7 @@ export interface Employee {
   jobTitle?: string;
   entryDate?: string;
   cuspp?: string;
+  token?: string;
 }
 
 export interface WholesalePurchaseEntry {
