@@ -162,13 +162,15 @@ const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Int
 
 export const PurchaseModule: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'register' | 'pending' | 'history'>('register');
-  const [purchases, setPurchases] = useState<PurchaseEntry[]>([]);
   const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
   const [viewingPurchase, setViewingPurchase] = useState<PurchaseEntry | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string } | null>(null);
   const [alertInfo, setAlertInfo] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
-  const [isLoadingData, setIsLoadingData] = useState(true);
   const [editingPurchase, setEditingPurchase] = useState<PurchaseEntry | null>(null);
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [pendingRefreshKey, setPendingRefreshKey] = useState(0);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const canCreate = DataService.checkPermission('purchases_ruc10', 'create');
   const canUpdate = DataService.checkPermission('purchases_ruc10', 'update');
@@ -176,8 +178,8 @@ export const PurchaseModule: React.FC = () => {
   const canRead = DataService.checkPermission('purchases_ruc10', 'read');
   
   useEffect(() => {
-    loadPurchases();
     loadIntermediaries();
+    refreshCounts();
   }, []);
 
   const loadIntermediaries = async () => {
@@ -188,30 +190,18 @@ export const PurchaseModule: React.FC = () => {
       setIntermediaries(DataService.getIntermediaries());
     }
   };
-  const loadPurchases = async (force = false) => { 
-    // Evitamos mostrar el "skeleton" de carga si ya tenemos datos
-    if (purchases.length === 0 || force) {
-        setIsLoadingData(true);
-    } else {
-        // Si no forzamos y ya hay datos, hacemos un refresh silencioso
-        BackendService.getPurchases({ type: 'RUC10', limit: 500 }).then(list => {
-            const mapped = mapPurchasesFromBackend(list);
-            // Solo actualizamos el estado si hubo cambios para evitar re-renders
-            if (JSON.stringify(mapped) !== JSON.stringify(purchases)) {
-                setPurchases(mapped);
-            }
-        }).catch(() => {});
-        return;
-    }
-    
+
+  const refreshCounts = async (force = false) => {
     try {
-      const list = await BackendService.getPurchases({ type: 'RUC10', limit: 500 });
-      const mapped = mapPurchasesFromBackend(list);
-      setPurchases(mapped);
+      const [pPending, pHistory] = await Promise.all([
+        BackendService.getPurchasesPaged({ type: 'RUC10', status: 'PENDING_DOCS', limit: 1, offset: 0 }, force),
+        BackendService.getPurchasesPaged({ type: 'RUC10', status: 'COMPLETED', limit: 1, offset: 0 }, force),
+      ]);
+      setPendingTotal(Number(pPending?.total || 0));
+      setHistoryTotal(Number(pHistory?.total || 0));
     } catch {
-      setPurchases(DataService.getPurchases());
-    } finally {
-      setIsLoadingData(false);
+      setPendingTotal(0);
+      setHistoryTotal(0);
     }
   };
 
@@ -267,15 +257,50 @@ export const PurchaseModule: React.FC = () => {
       }));
   };
 
+  const fetchPurchasePage = async (args: {
+    status: 'PENDING_DOCS' | 'COMPLETED';
+    q?: string;
+    blockNumber?: number;
+    opDate?: string;
+    limit: number;
+    offset: number;
+    force?: boolean;
+  }) => {
+    const res = await BackendService.getPurchasesPaged(
+      {
+        type: 'RUC10',
+        status: args.status,
+        q: args.q,
+        block_number: args.blockNumber,
+        op_date: args.opDate,
+        limit: args.limit,
+        offset: args.offset,
+      },
+      Boolean(args.force)
+    );
+    return {
+      items: mapPurchasesFromBackend(res?.items || []),
+      total: Number(res?.total || 0),
+    };
+  };
 
+  const getPendingBlocks = async (opDate?: string, force = false) => {
+    return BackendService.getPurchaseBlocks({ type: 'RUC10', status: 'PENDING_DOCS', op_date: opDate }, force);
+  };
 
   const handleDelete = (id: string) => {
     if (confirm('¿Eliminar esta compra RUC 10? El equipo se retirará del stock (si no ha sido vendido o transferido).')) {
-        BackendService.deletePurchase(id).then(() => {
-            loadPurchases(true);
-        }).catch(() => {
-            DataService.deletePurchaseRuc10(id);
-            loadPurchases(true);
+      BackendService.deletePurchase(id)
+        .then(async () => {
+          setPendingRefreshKey(k => k + 1);
+          setHistoryRefreshKey(k => k + 1);
+          await refreshCounts(true);
+        })
+        .catch(async () => {
+          DataService.deletePurchaseRuc10(id);
+          setPendingRefreshKey(k => k + 1);
+          setHistoryRefreshKey(k => k + 1);
+          await refreshCounts(true);
         });
     }
   };
@@ -286,13 +311,58 @@ export const PurchaseModule: React.FC = () => {
       
       <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl w-full md:w-fit shadow-inner overflow-x-auto print:hidden">
         <button onClick={() => setActiveTab('register')} className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'register' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}><User className="w-4 h-4 mr-2 inline" /> Registro</button>
-        <button onClick={() => setActiveTab('pending')} className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'pending' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}><Clock className="w-4 h-4 mr-2 inline" /> Pendientes ({purchases.filter(p => p.status === PurchaseStatus.PENDING_DOCS).length})</button>
-        <button onClick={() => setActiveTab('history')} className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'history' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}><History className="w-4 h-4 mr-2 inline" /> Historial</button>
+        <button onClick={() => setActiveTab('pending')} className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'pending' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}><Clock className="w-4 h-4 mr-2 inline" /> Pendientes ({pendingTotal})</button>
+        <button onClick={() => setActiveTab('history')} className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'history' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}><History className="w-4 h-4 mr-2 inline" /> Historial ({historyTotal})</button>
       </div>
 
-      {activeTab === 'register' && <RegisterForm onSuccess={() => { setAlertInfo({ message: 'Equipo Registrado', type: 'success' }); loadPurchases(true); setActiveTab('pending'); }} intermediaries={intermediaries} showAlert={(m, t) => setAlertInfo({ message: m, type: t })} purchases={purchases} />}
-      {activeTab === 'pending' && <PendingList purchases={purchases} onUpdate={() => loadPurchases(true)} onPreview={setPreviewDoc} showAlert={(m, t) => setAlertInfo({ message: m, type: t })} isLoading={isLoadingData} onEdit={setEditingPurchase} onDelete={handleDelete} canDelete={canDelete} canUpdate={canUpdate} />}
-      {activeTab === 'history' && <PurchaseHistory purchases={purchases} onUpdate={() => loadPurchases(true)} canDelete={canDelete} canUpdate={canUpdate} canRead={canRead} onDelete={handleDelete} onViewSupport={setViewingPurchase} isLoading={isLoadingData} onEdit={setEditingPurchase} />}
+      {activeTab === 'register' && (
+        <RegisterForm
+          onSuccess={async () => {
+            setAlertInfo({ message: 'Equipo Registrado', type: 'success' });
+            setPendingRefreshKey(k => k + 1);
+            setHistoryRefreshKey(k => k + 1);
+            await refreshCounts(true);
+            setActiveTab('pending');
+          }}
+          intermediaries={intermediaries}
+          showAlert={(m, t) => setAlertInfo({ message: m, type: t })}
+        />
+      )}
+      {activeTab === 'pending' && (
+        <PendingList
+          fetchPage={(args) => fetchPurchasePage({ ...args, status: 'PENDING_DOCS' })}
+          getBlocks={getPendingBlocks}
+          refreshKey={pendingRefreshKey}
+          onUpdate={async () => {
+            setPendingRefreshKey(k => k + 1);
+            setHistoryRefreshKey(k => k + 1);
+            await refreshCounts(true);
+          }}
+          onPreview={setPreviewDoc}
+          showAlert={(m, t) => setAlertInfo({ message: m, type: t })}
+          onEdit={setEditingPurchase}
+          onDelete={handleDelete}
+          canDelete={canDelete}
+          canUpdate={canUpdate}
+        />
+      )}
+      {activeTab === 'history' && (
+        <PurchaseHistory
+          fetchPage={(args) => fetchPurchasePage({ ...args, status: 'COMPLETED' })}
+          refreshKey={historyRefreshKey}
+          onUpdate={async () => {
+            setPendingRefreshKey(k => k + 1);
+            setHistoryRefreshKey(k => k + 1);
+            await refreshCounts(true);
+          }}
+          canDelete={canDelete}
+          canUpdate={canUpdate}
+          canRead={canRead}
+          onDelete={handleDelete}
+          onViewSupport={setViewingPurchase}
+          onEdit={setEditingPurchase}
+        />
+      )}
 
       {/* MODAL DE EDICIÓN (RUC 10) */}
       {editingPurchase && (
@@ -305,7 +375,9 @@ export const PurchaseModule: React.FC = () => {
                     await BackendService.updatePurchase(editingPurchase.id, updatedData);
                     setAlertInfo({ message: 'Información actualizada correctamente', type: 'success' });
                     setEditingPurchase(null);
-                    loadPurchases(true);
+                    setPendingRefreshKey(k => k + 1);
+                    setHistoryRefreshKey(k => k + 1);
+                    await refreshCounts(true);
                 } catch (error) {
                     setAlertInfo({ message: 'Error al actualizar información', type: 'error' });
                 }
@@ -516,7 +588,7 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
     );
 };
 
-const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermediary[], showAlert: (m: string, t: 'success' | 'error') => void, purchases: PurchaseEntry[] }> = ({ onSuccess, intermediaries, showAlert, purchases }) => {
+const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermediary[], showAlert: (m: string, t: 'success' | 'error') => void }> = ({ onSuccess, intermediaries, showAlert }) => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
     useEffect(() => {
@@ -545,14 +617,16 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
   });
 
   useEffect(() => {
-    if (purchases.length > 0) {
-        const currentMax = Math.max(...purchases.map(p => Number(p.blockNumber || 1)));
+    BackendService.getPurchaseBlocks({ type: 'RUC10' })
+      .then(blocks => {
+        const currentMax = blocks.length > 0 ? Math.max(...blocks) : 0;
         setMaxBlock(currentMax);
         if (formData.blockNumber === '1' && currentMax > 0) {
-            setFormData(f => ({ ...f, blockNumber: String(currentMax) }));
+          setFormData(f => ({ ...f, blockNumber: String(currentMax) }));
         }
-    }
-  }, [purchases]);
+      })
+      .catch(() => {});
+  }, []);
 
   const brandsForCat = Array.from(new Set(catalog.filter(c => c.category === formData.tipoBien).map(c => c.brand))).sort();
   const modelsForBrand = catalog.filter(c => c.category === formData.tipoBien && c.brand === formData.marca).map(c => c.model).sort();
@@ -668,11 +742,21 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
       
       const currentSerial = formData.serie.trim().toUpperCase();
       if(currentSerial) {
-          const exists = purchases.some(p => p.productSerial?.trim().toUpperCase() === currentSerial);
-          if(exists) {
-              setShowDuplicateWarning(true);
-              return; // Detiene el flujo normal y muestra la alerta
-          }
+          try {
+              const page = await BackendService.getPurchasesPaged({ type: 'RUC10', q: currentSerial, limit: 50, offset: 0 }, true);
+              const items = (page?.items || []) as any[];
+              const matches = items.filter((p: any) => String(p?.product_serial || '').trim().toUpperCase() === currentSerial);
+              if (matches.length > 0) {
+                  const currentSupplierId = String(formData.supplierId || '').trim();
+                  const sameOriginStore = matches.some((p: any) => String(p?.supplier_id || '').trim() === currentSupplierId);
+                  if (sameOriginStore) {
+                      showAlert("Serie repetida en la misma tienda de origen. Cambie la tienda de origen para poder continuar.", "error");
+                      return;
+                  }
+                  setShowDuplicateWarning(true);
+                  return;
+              }
+          } catch {}
       }
 
       await processSubmit();
@@ -896,21 +980,43 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
   );
 };
 
-const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, canDelete: boolean, canUpdate: boolean, canRead: boolean, onDelete: (id: string) => void, onViewSupport: (p: PurchaseEntry) => void, isLoading?: boolean, onEdit: (p: PurchaseEntry) => void }> = ({ purchases, onUpdate, canDelete, canUpdate, canRead, onDelete, onViewSupport, isLoading, onEdit }) => {
-    const history = purchases.filter(p => p.status === PurchaseStatus.COMPLETED);
+const PurchaseHistory: React.FC<{
+    fetchPage: (args: { q?: string; limit: number; offset: number; force?: boolean }) => Promise<{ items: PurchaseEntry[]; total: number }>;
+    refreshKey: number;
+    onUpdate: () => void;
+    canDelete: boolean;
+    canUpdate: boolean;
+    canRead: boolean;
+    onDelete: (id: string) => void;
+    onViewSupport: (p: PurchaseEntry) => void;
+    onEdit: (p: PurchaseEntry) => void;
+}> = ({ fetchPage, refreshKey, onUpdate, canDelete, canUpdate, canRead, onDelete, onViewSupport, onEdit }) => {
     const [searchQuery, setSearchQuery] = useState('');
+    const [pageSize, setPageSize] = useState<10 | 50 | 100>(10);
+    const [page, setPage] = useState(1);
+    const [items, setItems] = useState<PurchaseEntry[]>([]);
+    const [total, setTotal] = useState(0);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const filteredHistory = history.filter(p => {
-        if (!searchQuery) return true;
-        const s = searchQuery.toLowerCase();
-        return (
-            p.providerName?.toLowerCase().includes(s) || 
-            p.providerDni?.includes(s) ||
-            p.productBrand?.toLowerCase().includes(s) ||
-            p.productModel?.toLowerCase().includes(s) ||
-            p.productSerial?.toLowerCase().includes(s)
-        );
-    });
+    const hasMore = page * pageSize < total;
+
+    useEffect(() => {
+        let cancelled = false;
+        setIsLoading(true);
+        fetchPage({ q: searchQuery || undefined, limit: pageSize, offset: (page - 1) * pageSize })
+            .then(({ items: nextItems, total: nextTotal }) => {
+                if (cancelled) return;
+                setItems(nextItems);
+                setTotal(nextTotal);
+            })
+            .finally(() => {
+                if (cancelled) return;
+                setIsLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchPage, refreshKey, searchQuery, pageSize, page]);
 
     return (
         <div className="space-y-6">
@@ -920,9 +1026,47 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
                     type="text" 
                     placeholder="Buscar en el historial por DNI, Vendedor, Marca, Modelo o Serie..." 
                     value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
+                    onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                     className="bg-transparent border-none outline-none w-full ml-3 text-sm font-bold text-slate-700 placeholder-slate-400"
                 />
+            </div>
+
+            <div className="flex justify-between items-center">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    Total: {total}
+                </div>
+                <div className="flex items-center gap-2">
+                    <select
+                        value={pageSize}
+                        onChange={e => { setPage(1); setPageSize(Number(e.target.value) as any); }}
+                        className="bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 outline-none focus:border-emerald-400 font-black text-slate-700 text-[11px]"
+                    >
+                        <option value={10}>10</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                    </select>
+                    <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-100 rounded-xl p-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page <= 1 || isLoading}
+                            className="h-9 px-4 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase"
+                        >
+                            Anterior
+                        </button>
+                        <div className="h-9 px-3 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black text-[10px] uppercase tracking-widest">
+                            {page}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setPage(p => p + 1)}
+                            disabled={!hasMore || isLoading}
+                            className="h-9 px-4 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase"
+                        >
+                            Siguiente
+                        </button>
+                    </div>
+                </div>
             </div>
             
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-x-auto">
@@ -954,7 +1098,7 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
                                     </td>
                                 </tr>
                             ))
-                        ) : filteredHistory.length === 0 ? (<tr><td colSpan={7} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Bandeja de historial vacía.</td></tr>) : filteredHistory.map(item => (
+                        ) : items.length === 0 ? (<tr><td colSpan={7} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Bandeja de historial vacía.</td></tr>) : items.map(item => (
                             <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
                                 <td className="px-8 py-5">
                                     <span className="bg-slate-900 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">B{item.blockNumber || 1}</span>
@@ -995,8 +1139,24 @@ const PurchaseHistory: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => vo
     );
 };
 
-const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void, showAlert: (m: string, t: 'success' | 'error') => void, isLoading?: boolean, onEdit: (p: PurchaseEntry) => void, onDelete: (id: string) => void, canDelete: boolean, canUpdate: boolean }> = ({ purchases, onUpdate, onPreview, showAlert, isLoading, onEdit, onDelete, canDelete, canUpdate }) => {
-    const pending = purchases.filter(p => p.status === PurchaseStatus.PENDING_DOCS);
+const PendingList: React.FC<{
+    fetchPage: (args: { q?: string; blockNumber?: number; opDate?: string; limit: number; offset: number; force?: boolean }) => Promise<{ items: PurchaseEntry[]; total: number }>;
+    getBlocks: (opDate?: string, force?: boolean) => Promise<number[]>;
+    refreshKey: number;
+    onUpdate: () => void;
+    onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void;
+    showAlert: (m: string, t: 'success' | 'error') => void;
+    onEdit: (p: PurchaseEntry) => void;
+    onDelete: (id: string) => void;
+    canDelete: boolean;
+    canUpdate: boolean;
+}> = ({ fetchPage, getBlocks, refreshKey, onUpdate, onPreview, showAlert, onEdit, onDelete, canDelete, canUpdate }) => {
+    const [pending, setPending] = useState<PurchaseEntry[]>([]);
+    const [total, setTotal] = useState(0);
+    const [pageSize, setPageSize] = useState<10 | 50 | 100>(10);
+    const [page, setPage] = useState(1);
+    const [isTableLoading, setIsTableLoading] = useState(true);
+    const [availableBlocks, setAvailableBlocks] = useState<string[]>([]);
     const [selected, setSelected] = useState<PurchaseEntry | null>(null);
     const [files, setFiles] = useState({ v: null as string | null, c: null as string | null, d: null as string | null });
     const [rawFiles, setRawFiles] = useState<{ v: File | null, c: File | null, d: File | null }>({ v: null, c: null, d: null });
@@ -1007,19 +1167,44 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
     const [filterBlock, setFilterBlock] = useState('');
     const [filterDate, setFilterDate] = useState('');
 
-    const filteredPending = pending.filter(p => {
-        const matchesSearch = 
-            (p.providerName || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-            (p.providerDni || '').includes(searchQuery) ||
-            (p.productBrand || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (p.productModel || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (p.productSerial || '').toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesBlock = filterBlock ? String(p.blockNumber || 1) === filterBlock : true;
-        const matchesDate = filterDate ? new Date(p.date).toISOString().split('T')[0] === filterDate : true;
-        return matchesSearch && matchesBlock && matchesDate;
-    });
+    const hasMore = page * pageSize < total;
 
-    const uniqueBlocks = Array.from(new Set(pending.map(p => String(p.blockNumber || 1)))).sort((a, b) => Number(a) - Number(b));
+    useEffect(() => {
+        let cancelled = false;
+        getBlocks(filterDate || undefined)
+            .then(blocks => {
+                if (cancelled) return;
+                setAvailableBlocks(blocks.map(b => String(b)));
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [getBlocks, refreshKey, filterDate]);
+
+    useEffect(() => {
+        let cancelled = false;
+        setIsTableLoading(true);
+        fetchPage({
+            q: searchQuery || undefined,
+            blockNumber: filterBlock ? Number(filterBlock) : undefined,
+            opDate: filterDate || undefined,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+        })
+            .then(({ items, total }) => {
+                if (cancelled) return;
+                setPending(items);
+                setTotal(total);
+            })
+            .finally(() => {
+                if (cancelled) return;
+                setIsTableLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchPage, refreshKey, searchQuery, filterBlock, filterDate, pageSize, page]);
 
     const fmtDateEs = (iso?: string) => {
         const dt = iso ? new Date(iso) : new Date();
@@ -1119,7 +1304,8 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
         }
     };
 
-    if(pending.length === 0) return <div className="p-24 text-center text-slate-300 font-black uppercase border-4 border-dashed rounded-[3rem] bg-white flex flex-col items-center gap-4"><Package className="w-12 h-12 opacity-30"/><p className="tracking-[0.2em]">Sin expedientes RUC 10 pendientes de sustentar.</p></div>;
+    const hasActiveFilters = Boolean(searchQuery || filterBlock || filterDate);
+    if(!isTableLoading && total === 0 && !hasActiveFilters) return <div className="p-24 text-center text-slate-300 font-black uppercase border-4 border-dashed rounded-[3rem] bg-white flex flex-col items-center gap-4"><Package className="w-12 h-12 opacity-30"/><p className="tracking-[0.2em]">Sin expedientes RUC 10 pendientes de sustentar.</p></div>;
 
     return (
         <div className="space-y-6">
@@ -1130,7 +1316,7 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                         type="text" 
                         placeholder="Buscar por DNI, Vendedor, Marca, Modelo o Serie..." 
                         value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
+                        onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                         className="bg-transparent border-none outline-none w-full ml-3 text-sm font-bold text-slate-700 placeholder-slate-400"
                     />
                 </div>
@@ -1139,11 +1325,11 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-1">Filtrar Bloque</label>
                         <select 
                             value={filterBlock} 
-                            onChange={e => setFilterBlock(e.target.value)}
+                            onChange={e => { setFilterBlock(e.target.value); setPage(1); }}
                             className="bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-orange-400 font-black text-slate-700 text-sm"
                         >
                             <option value="">Todos los Bloques</option>
-                            {uniqueBlocks.map(b => <option key={b} value={b}>Bloque {b}</option>)}
+                            {availableBlocks.map(b => <option key={b} value={b}>Bloque {b}</option>)}
                         </select>
                     </div>
                     <div className="flex flex-col">
@@ -1151,9 +1337,44 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                         <input 
                             type="date" 
                             value={filterDate} 
-                            onChange={e => setFilterDate(e.target.value)}
+                            onChange={e => { setFilterDate(e.target.value); setPage(1); }}
                             className="bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-orange-400 font-black text-slate-700 text-sm"
                         />
+                    </div>
+                    <div className="flex flex-col">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-1">Mostrar</label>
+                        <select
+                            value={pageSize}
+                            onChange={e => { setPage(1); setPageSize(Number(e.target.value) as any); }}
+                            className="bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-orange-400 font-black text-slate-700 text-sm"
+                        >
+                            <option value={10}>10</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                        </select>
+                    </div>
+                    <div className="flex items-end">
+                        <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-100 rounded-xl p-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page <= 1 || isTableLoading}
+                                className="h-9 px-4 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase"
+                            >
+                                Anterior
+                            </button>
+                            <div className="h-9 px-3 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black text-[10px] uppercase tracking-widest">
+                                {page}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setPage(p => p + 1)}
+                                disabled={!hasMore || isTableLoading}
+                                className="h-9 px-4 inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase"
+                            >
+                                Siguiente
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1173,7 +1394,7 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {isLoading ? (
+                            {isTableLoading ? (
                                 // SKELETON LOADER
                                 Array.from({ length: 3 }).map((_, i) => (
                                     <tr key={`skeleton-${i}`} className="animate-pulse">
@@ -1195,11 +1416,11 @@ const PendingList: React.FC<{ purchases: PurchaseEntry[], onUpdate: () => void, 
                                         <td className="px-6 py-4"><div className="h-8 w-24 bg-slate-200 rounded-xl mx-auto"></div></td>
                                     </tr>
                                 ))
-                            ) : filteredPending.length === 0 ? (
+                            ) : pending.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="p-12 text-center text-slate-400 font-bold">No se encontraron expedientes con los filtros actuales.</td>
                                 </tr>
-                            ) : filteredPending.map(p => (
+                            ) : pending.map(p => (
                                 <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
                                     <td className="px-6 py-4">
                                         <span className="bg-slate-900 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase shadow-sm">B{p.blockNumber || 1}</span>

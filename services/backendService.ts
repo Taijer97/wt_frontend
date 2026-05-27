@@ -39,6 +39,15 @@ const clearCache = (keyPattern: string) => {
   });
 };
 
+const cacheKeyFromParams = (prefix: string, params: Record<string, any>) => {
+  const normalized = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+    .join('&');
+  return `${prefix}${normalized ? `_${normalized}` : ''}`;
+};
+
 export const BackendService = {
   _statusFromBackend(s?: string) {
     if (!s) return undefined as any;
@@ -373,6 +382,46 @@ export const BackendService = {
       return res.data;
     }, forceRefresh);
   },
+  async getPurchasesPaged(
+    params?: {
+      type?: string;
+      status?: string;
+      q?: string;
+      block_number?: number;
+      op_date?: string;
+      limit?: number;
+      offset?: number;
+    },
+    forceRefresh = false
+  ) {
+    const effectiveParams = { ...(params || {}) } as any;
+    effectiveParams.use_cache = !forceRefresh;
+    const key = cacheKeyFromParams('purchases_paged', effectiveParams);
+    return getCached(
+      key,
+      async () => {
+        const res = await api.get('/purchases/paged', { params: effectiveParams });
+        return res.data;
+      },
+      forceRefresh
+    );
+  },
+  async getPurchaseBlocks(
+    params?: { type?: string; status?: string; op_date?: string },
+    forceRefresh = false
+  ): Promise<number[]> {
+    const effectiveParams = { ...(params || {}) } as any;
+    effectiveParams.use_cache = !forceRefresh;
+    const key = cacheKeyFromParams('purchase_blocks', effectiveParams);
+    return getCached(
+      key,
+      async () => {
+        const res = await api.get('/purchases/blocks', { params: effectiveParams });
+        return res.data as number[];
+      },
+      forceRefresh
+    );
+  },
   async createPurchase(payload: {
     type: string;
     documentNumber: string;
@@ -426,7 +475,7 @@ export const BackendService = {
         id_type: it.idType
       })),
     });
-    clearCache('purchases_all');
+    clearCache('purchases');
     return res.data;
   },
   async updatePurchase(id: string, payload: Partial<{
@@ -465,7 +514,7 @@ export const BackendService = {
       date: payload.date,
       block_number: payload.blockNumber
     });
-    clearCache('purchases_all');
+    clearCache('purchases');
     return res.data;
   },
   async generatePurchaseDoc(id: string, docKind: 'contract' | 'dj') {
@@ -474,7 +523,7 @@ export const BackendService = {
   },
   async deletePurchase(id: string) {
     const res = await api.delete(`/purchases/${id}`);
-    clearCache('purchases_all');
+    clearCache('purchases');
     return res.data;
   },
   async uploadPurchaseFile(id: string, file: File, docKind?: 'voucher' | 'contract' | 'dj' | 'general') {
@@ -488,7 +537,7 @@ export const BackendService = {
       withCredentials: true,
       headers: { 'ngrok-skip-browser-warning': 'true' }
     });
-    clearCache('purchases_all'); // Update url potentially
+    clearCache('purchases');
     return res.data as { url: string; filename: string; doc_kind?: string };
   },
 

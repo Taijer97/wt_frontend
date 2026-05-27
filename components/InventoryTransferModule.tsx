@@ -11,7 +11,7 @@ export const InventoryTransferModule: React.FC = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [purchases, setPurchases] = useState<any[]>([]);
     const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
     const [transferCalc, setTransferCalc] = useState({ base: 0, igv: 0, total: 0 });
     const [config, setConfig] = useState<any>(null);
     
@@ -95,27 +95,70 @@ export const InventoryTransferModule: React.FC = () => {
          p.serialNumber?.toUpperCase().includes(searchTerm))
     );
 
-    const handleSelectProduct = (product: Product) => {
-        setSelectedProduct(product);
-        setSelectedIntermediaryId(product.intermediaryId || '');
-        setTransferDate(new Date().toISOString().slice(0, 10)); // Reset date on selection
-        
-        if(product.status === ProductStatus.IN_STOCK_RUC10 && config) {
-            const totalCost = product.totalCost || 0;
-            let profit = config.ruc10MarginType === 'PERCENT' ? (totalCost * config.ruc10Margin) : config.ruc10Margin;
-            const divisor = 1 - (config.rentaRate || 0);
-            
-            // Base imponible de la transferencia
-            const base = (totalCost + profit) / divisor;
-            // IGV respetando exoneración
-            const igv = base * effectiveIgvRate;
-            const total = base + igv;
-            
-            setTransferCalc({ base, igv, total });
-            setDocCorrelative(getNextCorrelative(transactions, docSeries));
+    const selectedTransferProducts = products.filter(
+        p => selectedProductIds.includes(p.id) && p.status === ProductStatus.IN_STOCK_RUC10
+    );
+
+    const calcForProduct = (product: Product) => {
+        const totalCost = product.totalCost || 0;
+        const marginType = config?.ruc10MarginType;
+        const margin = config?.ruc10Margin || 0;
+        const rentaRate = config?.rentaRate || 0;
+        const profit = marginType === 'PERCENT' ? (totalCost * margin) : margin;
+        const divisor = 1 - rentaRate;
+        const base = divisor > 0 ? (totalCost + profit) / divisor : (totalCost + profit);
+        const igv = base * effectiveIgvRate;
+        const total = base + igv;
+        return { base, igv, total };
+    };
+
+    useEffect(() => {
+        if (!config) return;
+        if (selectedTransferProducts.length === 0) {
+            setTransferCalc({ base: 0, igv: 0, total: 0 });
+            setSelectedIntermediaryId('');
             setVoucherFile(null);
-            setInvoiceFile(null); // Reset invoice
+            setVoucherPreview(null);
+            setInvoiceFile(null);
+            return;
         }
+        const totals = selectedTransferProducts.reduce(
+            (acc, p) => {
+                const c = calcForProduct(p);
+                return {
+                    base: acc.base + c.base,
+                    igv: acc.igv + c.igv,
+                    total: acc.total + c.total,
+                };
+            },
+            { base: 0, igv: 0, total: 0 }
+        );
+        setTransferCalc(totals);
+        if (!selectedIntermediaryId) {
+            setSelectedIntermediaryId(selectedTransferProducts[0].intermediaryId || '');
+        }
+    }, [config, effectiveIgvRate, selectedIntermediaryId, selectedTransferProducts]);
+
+    const handleSelectProduct = (product: Product) => {
+        if (activeTab !== 'ruc10') return;
+
+        const already = selectedProductIds.includes(product.id);
+        if (already) {
+            setSelectedProductIds(prev => prev.filter(id => id !== product.id));
+            return;
+        }
+
+        const incomingIntermediary = product.intermediaryId || '';
+        if (selectedProductIds.length > 0 && selectedIntermediaryId && incomingIntermediary && incomingIntermediary !== selectedIntermediaryId) {
+            alert('Solo puede transferir productos del mismo propietario (Emisor RUC 10) en una sola factura.');
+            return;
+        }
+
+        setSelectedProductIds(prev => [...prev, product.id]);
+        if (!selectedIntermediaryId) {
+            setSelectedIntermediaryId(incomingIntermediary);
+        }
+        setTransferDate(new Date().toISOString().slice(0, 10));
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -147,7 +190,7 @@ export const InventoryTransferModule: React.FC = () => {
     };
 
     const handleTransfer = async () => {
-        if (!selectedProduct) return;
+        if (selectedTransferProducts.length === 0) return alert("Seleccione al menos un producto para transferir.");
         if (!selectedIntermediaryId) return alert("Seleccione el Emisor RUC 10.");
         if (!voucherFile) return alert("Suba el Voucher de Pago.");
         if (!invoiceFile) return alert("Suba la Factura de Venta.");
@@ -156,6 +199,17 @@ export const InventoryTransferModule: React.FC = () => {
         const docNumber = `${docSeries} - ${docCorrelative}`;
         
         try {
+            const trxItems = selectedTransferProducts.map(p => {
+                const c = calcForProduct(p);
+                return {
+                    productId: p.id,
+                    productName: `${p.category || ''} ${p.brand || ''} ${p.model || ''} - ${p.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${p.serialNumber || ''}`.trim(),
+                    quantity: 1,
+                    unitPriceBase: c.base,
+                    totalBase: c.base
+                };
+            });
+
             const trx = await BackendService.createTransaction({
                 trxType: 'transfer',
                 documentType: ReceiptType.FACTURA,
@@ -179,13 +233,7 @@ export const InventoryTransferModule: React.FC = () => {
                 // Checking BackendService.createTransaction in previous file read... it DOES NOT take date.
                 // BUT I can modify the transaction AFTER creation if needed, or better, update BackendService.
                 // Actually, let's just ensure product has the date. The user asked to "specify the date".
-                items: [{
-                    productId: selectedProduct.id,
-                    productName: `${selectedProduct.category || ''} ${selectedProduct.brand || ''} ${selectedProduct.model || ''} - ${selectedProduct.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${selectedProduct.serialNumber || ''}`.trim(),
-                    quantity: 1,
-                    unitPriceBase: transferCalc.base,
-                    totalBase: transferCalc.base
-                }]
+                items: trxItems
             });
             
             // If we want to support backdating transactions, we need to update the transaction date
@@ -206,19 +254,24 @@ export const InventoryTransferModule: React.FC = () => {
                 console.log("All uploads completed.");
             }
             
-            await BackendService.updateProduct(selectedProduct.id, {
-                status: ProductStatus.TRANSFERRED_RUC20,
-                intermediaryId: selectedIntermediaryId,
-                transferBase: transferCalc.base,
-                transferIgv: transferCalc.igv,
-                transferTotal: transferCalc.total,
-                transferDocType: ReceiptType.FACTURA,
-                transferDocNumber: docNumber,
-                transferDate: new Date(transferDate).toISOString() // Use selected date
-            });
+            await Promise.all(
+                selectedTransferProducts.map(async p => {
+                    const c = calcForProduct(p);
+                    await BackendService.updateProduct(p.id, {
+                        status: ProductStatus.TRANSFERRED_RUC20,
+                        intermediaryId: selectedIntermediaryId,
+                        transferBase: c.base,
+                        transferIgv: c.igv,
+                        transferTotal: c.total,
+                        transferDocType: ReceiptType.FACTURA,
+                        transferDocNumber: docNumber,
+                        transferDate: new Date(transferDate).toISOString()
+                    });
+                })
+            );
 
-            alert(`Transferencia Exitosa.`);
-            setSelectedProduct(null);
+            alert(`Transferencia exitosa: ${selectedTransferProducts.length} producto(s) en una sola factura.`);
+            setSelectedProductIds([]);
             setVoucherFile(null);
             setVoucherPreview(null);
             setInvoiceFile(null);
@@ -257,19 +310,19 @@ export const InventoryTransferModule: React.FC = () => {
                 </div>
                 <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl">
                     <button
-                        onClick={() => { setActiveTab('ruc10'); setSelectedProduct(null); }}
+                        onClick={() => { setActiveTab('ruc10'); setSelectedProductIds([]); }}
                         className={`flex items-center gap-2 px-6 py-2.5 text-sm font-black rounded-lg transition-all ${activeTab === 'ruc10' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
                     >
                         <Package className="w-4 h-4" /> Almacén RUC 10
                     </button>
                     <button
-                        onClick={() => { setActiveTab('ruc20'); setSelectedProduct(null); }}
+                        onClick={() => { setActiveTab('ruc20'); setSelectedProductIds([]); }}
                         className={`flex items-center gap-2 px-6 py-2.5 text-sm font-black rounded-lg transition-all ${activeTab === 'ruc20' ? 'bg-white text-purple-800 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
                     >
                         <Building2 className="w-4 h-4" /> Almacén RUC 20
                     </button>
                     <button
-                        onClick={() => { setActiveTab('history'); setSelectedProduct(null); }}
+                        onClick={() => { setActiveTab('history'); setSelectedProductIds([]); }}
                         className={`flex items-center gap-2 px-6 py-2.5 text-sm font-black rounded-lg transition-all ${activeTab === 'history' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
                     >
                         <History className="w-4 h-4" /> Historial
@@ -333,8 +386,11 @@ export const InventoryTransferModule: React.FC = () => {
                                                                 if (!item) return 'Item';
                                                                 // Intenta recuperar el producto completo para mostrar detalles históricos si faltan
                                                                 const p = products.find(prod => prod.id === item.productId);
-                                                                if (p) return `${p.category || ''} ${p.brand || ''} ${p.model || ''} - ${p.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${p.serialNumber || ''}`;
-                                                                return item.productName || 'Item';
+                                                                const name = p
+                                                                    ? `${p.category || ''} ${p.brand || ''} ${p.model || ''} - ${p.idType === 'IMEI' ? 'IMEI' : 'S/N'}: ${p.serialNumber || ''}`
+                                                                    : (item.productName || 'Item');
+                                                                const extra = (t.items?.length || 0) > 1 ? ` (+${(t.items?.length || 0) - 1})` : '';
+                                                                return `${name}${extra}`;
                                                             })()}
                                                         </td>
                                                         <td className="px-6 py-4 text-right font-black text-slate-900">S/ {t.totalAmount.toFixed(2)}</td>
@@ -373,6 +429,7 @@ export const InventoryTransferModule: React.FC = () => {
                                 <table className="w-full text-sm text-left">
                                     <thead className="text-[11px] text-slate-700 uppercase bg-slate-50 font-black tracking-widest border-b">
                                         <tr>
+                                            {activeTab === 'ruc10' && <th className="px-6 py-4 text-center">Sel.</th>}
                                             <th className="px-6 py-4">Propietario / Serie</th>
                                             <th className="px-6 py-4">Descripción Equipo</th>
                                             <th className="px-6 py-4 text-right">Valorización</th>
@@ -384,6 +441,7 @@ export const InventoryTransferModule: React.FC = () => {
                                         {isLoadingData ? (
                                             Array.from({ length: 4 }).map((_, i) => (
                                                 <tr key={`skeleton-inv-${i}`} className="animate-pulse">
+                                                    {activeTab === 'ruc10' && <td className="px-6 py-4"><div className="h-5 w-5 bg-slate-200 rounded mx-auto"></div></td>}
                                                     <td className="px-6 py-4 space-y-2"><div className="h-4 w-32 bg-slate-200 rounded"></div><div className="h-3 w-20 bg-slate-200 rounded"></div></td>
                                                     <td className="px-6 py-4 space-y-2"><div className="h-4 w-40 bg-slate-200 rounded"></div><div className="h-3 w-24 bg-slate-200 rounded"></div></td>
                                                     <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-slate-200 rounded ml-auto"></div></td>
@@ -392,14 +450,25 @@ export const InventoryTransferModule: React.FC = () => {
                                                 </tr>
                                             ))
                                         ) : (activeTab === 'ruc10' ? ruc10Products : ruc20Products).length === 0 ? (
-                                            <tr><td colSpan={activeTab === 'ruc10' ? 5 : 4} className="p-16 text-center text-slate-400 font-bold uppercase italic tracking-widest">Sin registros disponibles.</td></tr>
+                                            <tr><td colSpan={activeTab === 'ruc10' ? 6 : 4} className="p-16 text-center text-slate-400 font-bold uppercase italic tracking-widest">Sin registros disponibles.</td></tr>
                                         ) : (
                                             (activeTab === 'ruc10' ? ruc10Products : ruc20Products).map(product => (
                                                 <tr 
                                                     key={product.id} 
-                                                    className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedProduct?.id === product.id ? 'bg-blue-50 ring-2 ring-inset ring-blue-500' : ''}`} 
+                                                    className={`hover:bg-slate-50 transition-colors cursor-pointer ${activeTab === 'ruc10' && selectedProductIds.includes(product.id) ? 'bg-blue-50 ring-2 ring-inset ring-blue-500' : ''}`} 
                                                     onClick={() => handleSelectProduct(product)}
                                                 >
+                                                    {activeTab === 'ruc10' && (
+                                                        <td className="px-6 py-4 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedProductIds.includes(product.id)}
+                                                                onChange={() => handleSelectProduct(product)}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="h-5 w-5 accent-blue-600"
+                                                            />
+                                                        </td>
+                                                    )}
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-2">
                                                             <UserCheck className="w-3 h-3 text-blue-600" />
@@ -442,7 +511,7 @@ export const InventoryTransferModule: React.FC = () => {
 
                 <div className="sticky top-24 h-fit">
                     {activeTab === 'ruc10' && (
-                        <div className={`bg-white rounded-3xl shadow-xl border-2 transition-all duration-300 ${selectedProduct ? 'border-blue-600 opacity-100' : 'border-gray-100 opacity-50 pointer-events-none'}`}>
+                        <div className={`bg-white rounded-3xl shadow-xl border-2 transition-all duration-300 ${selectedTransferProducts.length > 0 ? 'border-blue-600 opacity-100' : 'border-gray-100 opacity-50 pointer-events-none'}`}>
                             <div className="p-8">
                                 <div className="flex items-center gap-4 mb-8">
                                     <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-700 shadow-inner">
@@ -454,7 +523,7 @@ export const InventoryTransferModule: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {selectedProduct ? (
+                                {selectedTransferProducts.length > 0 ? (
                                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                         <div className="space-y-2">
                                             <label className="block text-[11px] font-black text-slate-700 uppercase flex items-center gap-1">
@@ -473,8 +542,8 @@ export const InventoryTransferModule: React.FC = () => {
 
                                         <div className="bg-slate-50 p-5 rounded-2xl space-y-3 border-2 border-slate-100 shadow-inner">
                                             <div className="flex justify-between text-xs font-bold text-slate-600 uppercase">
-                                                <span>Costo RUC 10</span>
-                                                <span className="font-black">S/ {selectedProduct.totalCost?.toFixed(2)}</span>
+                                                <span>Costo RUC 10 ({selectedTransferProducts.length} prod.)</span>
+                                                <span className="font-black">S/ {selectedTransferProducts.reduce((acc, p) => acc + (p.totalCost || 0), 0).toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between text-xs font-bold text-slate-600 uppercase border-t pt-2">
                                                 <span>Base Imponible</span>
@@ -482,7 +551,7 @@ export const InventoryTransferModule: React.FC = () => {
                                             </div>
                                             <div className="flex justify-between text-xs font-bold text-emerald-800 uppercase">
                                                 <span>IGV Crédito ({effectiveIgvRate * 100}%)</span>
-                                                <span className={`font-black ${config.isIgvExempt ? 'text-emerald-600' : ''}`}>{config.isIgvExempt ? 'EXONERADO' : 'S/ ' + transferCalc.igv.toFixed(2)}</span>
+                                                <span className={`font-black ${config?.isIgvExempt ? 'text-emerald-600' : ''}`}>{config?.isIgvExempt ? 'EXONERADO' : 'S/ ' + transferCalc.igv.toFixed(2)}</span>
                                             </div>
                                             <div className="bg-blue-700 p-4 rounded-xl flex justify-between items-center text-white shadow-lg mt-2">
                                                 <span className="font-black text-[10px] uppercase">Total Factura</span>
@@ -540,7 +609,7 @@ export const InventoryTransferModule: React.FC = () => {
 
                                         <button 
                                             onClick={handleTransfer} 
-                                            disabled={isSubmitting}
+                                            disabled={isSubmitting || selectedTransferProducts.length === 0}
                                             className={`w-full bg-slate-900 text-white py-5 rounded-2xl font-black shadow-xl hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-widest text-xs ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                             <RefreshCw className={`w-5 h-5 inline mr-2 ${isSubmitting ? 'animate-spin' : ''}`} /> 
@@ -550,7 +619,7 @@ export const InventoryTransferModule: React.FC = () => {
                                 ) : (
                                     <div className="py-20 text-center flex flex-col items-center gap-4">
                                         <Package className="w-16 h-16 text-slate-200" />
-                                        <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest px-6">Seleccione un equipo de la lista para calcular la transferencia corporativa.</p>
+                                        <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest px-6">Seleccione uno o varios equipos para generar una sola factura de transferencia.</p>
                                     </div>
                                 )}
                             </div>

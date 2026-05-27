@@ -50,13 +50,27 @@ export async function fetchDni(dni: string) {
       const auth = factilizaToken.toLowerCase().startsWith('bearer ') ? factilizaToken : `Bearer ${factilizaToken}`;
       const res = await axios.get(url, { headers: { Authorization: auth } });
       const payload = res.data || {};
+      if (payload?.status !== 200 || payload?.success !== true) {
+        throw new Error(payload?.message || 'Factiliza error');
+      }
       const d = payload.data || {};
-      const nombres = d.nombres || '';
-      const apPat = d.apellido_paterno || '';
-      const apMat = d.apellido_materno || '';
-      const fullName =
-        (d.nombre_completo || '').trim() ||
-        [nombres, apPat, apMat].filter(Boolean).join(' ').trim();
+
+      let nombres = (d.nombres || '').toString().trim();
+      let apPat = (d.apellido_paterno || '').toString().trim();
+      let apMat = (d.apellido_materno || '').toString().trim();
+
+      const nombreCompletoRaw = (d.nombre_completo || '').toString().trim();
+      if ((!nombres || !apPat) && nombreCompletoRaw.includes(',')) {
+        const [apellidosPart, nombresPart] = nombreCompletoRaw.split(',').map((x: string) => x.trim());
+        if (!nombres && nombresPart) nombres = nombresPart;
+        if ((!apPat || !apMat) && apellidosPart) {
+          const tokens = apellidosPart.split(/\s+/).filter(Boolean);
+          if (!apPat && tokens.length > 0) apPat = tokens[0];
+          if (!apMat && tokens.length > 1) apMat = tokens.slice(1).join(' ');
+        }
+      }
+
+      const fullName = [apPat, apMat, nombres].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
       const direccion = (d.direccion_completa || d.direccion || '').toString();
       const fechaNacimiento = d.fecha_nacimiento || '';
       const ubigeoDir =
@@ -73,7 +87,11 @@ export async function fetchDni(dni: string) {
         ubigeoDir,
       };
     } catch (err: any) {
-      console.error('[DNI API] Error en Factiliza:', err?.message, err?.response?.data);
+      if (err?.response?.data?.status === 400) {
+        console.warn('[DNI API] Factiliza 400:', err?.response?.data?.message || 'Bad Request');
+      } else {
+        console.error('[DNI API] Error en Factiliza:', err?.message, err?.response?.data);
+      }
     }
   }
 
