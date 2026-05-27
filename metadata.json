@@ -1,0 +1,5 @@
+{
+  "name": "MYPE Gestión RMT",
+  "description": "Sistema integral de gestión para venta de laptops en Régimen MYPE Tributario Perú. Control de Inventarios, Ventas, Planillas y Cálculo de Impuestos SUNAT (IGV/Renta).",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,35 @@
+/* Global styles */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+/* Print styles to match on-screen payslip and remove browser margins */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  html, body {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Hide elements marked for no print */
+  .no-print, .print\:hidden {
+    display: none !important;
+  }
+  /* Ensure the payslip content fits exactly in A4 width */
+  #payslip-area {
+    width: 21cm !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
+  }
+  /* Remove extra shadows/borders in print if needed */
+  .shadow-2xl, .shadow-xl, .shadow-lg, .shadow-sm {
+    box-shadow: none !important;
+  }
+  /* Avoid scrollbars in print */
+  .custom-scrollbar {
+    overflow: visible !important;
+  }
+}
