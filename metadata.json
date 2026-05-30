@@ -1,5 +1,5 @@
 {
-  "name": "MYPE Gestión RMT",
-  "description": "Sistema integral de gestión para venta de laptops en Régimen MYPE Tributario Perú. Control de Inventarios, Ventas, Planillas y Cálculo de Impuestos SUNAT (IGV/Renta).",
+  "name": "WasiTech System v2.0",
+  "description": "Sistema integral de gestión de compra y venta y control de inventarios.",
   "requestFramePermissions": []
 }

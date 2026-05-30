@@ -31,6 +31,24 @@ const CustomAlert = ({ message, type, onClose }: { message: string, type: 'succe
 
 const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Intermediary[], onClose: () => void, onSave: (data: any) => Promise<void> }> = ({ purchase, intermediaries, onClose, onSave }) => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const toDateInputValue = (value?: any) => {
+        const fallback = new Date().toISOString().split('T')[0];
+        if (!value) return fallback;
+
+        if (value instanceof Date) {
+            const t = value.getTime();
+            return Number.isNaN(t) ? fallback : value.toISOString().split('T')[0];
+        }
+
+        const raw = String(value).trim();
+        if (!raw) return fallback;
+
+        if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return fallback;
+        return parsed.toISOString().split('T')[0];
+    };
 
     useEffect(() => {
         BackendService.getSuppliers().then(sups => {
@@ -52,7 +70,7 @@ const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Int
         baseAmount: purchase.priceAgreed || 0,
         intermediaryId: purchase.intermediaryId || '',
         supplierId: purchase.supplierId || '',
-        date: purchase.date || new Date().toISOString().split('T')[0],
+        date: toDateInputValue(purchase.date),
         blockNumber: purchase.blockNumber || 1
     });
     const [isSaving, setIsSaving] = useState(false);
@@ -278,8 +296,17 @@ export const PurchaseModule: React.FC = () => {
       },
       Boolean(args.force)
     );
+    const mapped = mapPurchasesFromBackend(res?.items || []);
+    mapped.sort((a, b) => {
+      const blockA = Number(a.blockNumber ?? 1) || 1;
+      const blockB = Number(b.blockNumber ?? 1) || 1;
+      if (blockA !== blockB) return blockB - blockA;
+      const idA = Number(a.id) || 0;
+      const idB = Number(b.id) || 0;
+      return idB - idA;
+    });
     return {
-      items: mapPurchasesFromBackend(res?.items || []),
+      items: mapped,
       total: Number(res?.total || 0),
     };
   };
@@ -663,6 +690,7 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
   const handleDniBlur = async () => {
     const dni = (formData.dni || '').trim();
     if (!dni || dni.length < 8) return;
+    let sellerLoaded = false;
     try {
       // Primero buscar en base de datos interna
       const seller = await BackendService.getSeller(dni);
@@ -670,13 +698,13 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
           setFormData(prev => ({
               ...prev,
               nombre: seller.full_name || prev.nombre,
-              direccion: seller.address || prev.direccion,
+              direccion: prev.direccion,
               telefono: seller.phone || prev.telefono,
               banco: seller.bank_name || prev.banco,
               cuentaBancaria: seller.bank_account || prev.cuentaBancaria
           }));
           showAlert("Datos cargados del historial", "success");
-          return;
+          sellerLoaded = true;
       }
     } catch (err) {
       // Ignorar error y continuar con la API
@@ -689,6 +717,9 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
         direccion: info.direccion || prev.direccion,
         nombre: info.fullName || prev.nombre
       }));
+      if (sellerLoaded) {
+        showAlert("Domicilio actualizado desde RENIEC", "success");
+      }
     } catch {}
   };
 

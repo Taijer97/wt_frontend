@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>WasiTech – MYPE Gestión RMT (Frontend)</h1>
-  <p>Gestión integral para empresas RMT en Perú: inventario, ventas, gastos, RRHH y contabilidad</p>
+  <h1>WasiTech System v2.0 (Frontend)</h1>
+  <p>Gestión integral para empresas RMT en Perú: compra y venta, ventas, gastos, RRHH y contabilidad</p>
 </div>
 
 ## Descripción
