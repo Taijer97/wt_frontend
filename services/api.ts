@@ -2,10 +2,11 @@ import axios from 'axios';
 
 // Configuración base de Axios apuntando al backend FastAPI
 const isDev = !!(import.meta as any).env?.DEV;
+const configuredBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || '').trim();
 const api = axios.create({
-  // En desarrollo usamos rutas relativas para que Vite proxy resuelva CORS.
-  // En producción usamos la variable VITE_API_BASE_URL.
-  baseURL: isDev ? '' : ((import.meta as any).env?.VITE_API_BASE_URL || 'http://100.116.47.110:8000'),
+  // Si VITE_API_BASE_URL está configurada, la usamos también en desarrollo.
+  // Si no, Vite proxy resuelve las rutas relativas.
+  baseURL: configuredBaseUrl || (isDev ? '' : 'http://100.116.47.110:8001'),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

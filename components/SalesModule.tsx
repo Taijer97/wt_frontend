@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ShoppingCart, Trash2, Printer, User, Building, PackageX, Tag, ShieldCheck, CheckCircle, X } from 'lucide-react';
-import { Product, ProductStatus, TransactionItem } from '../types';
+import { Product, ProductStatus, TransactionItem, CustomerRecord } from '../types';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
 import { fetchDni } from '../services/dniService';
 import { fetchRuc } from '../services/rucService';
+import { CustomerNoteModal } from './CustomerNoteModal';
 
 // --- CUSTOM ALERT COMPONENT (Same style as others) ---
 const CustomAlert = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
@@ -43,6 +44,8 @@ export const SalesModule: React.FC = () => {
     const [alertInfo, setAlertInfo] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isLoadingData, setIsLoadingData] = useState(true);
+    const [customerNote, setCustomerNote] = useState<CustomerRecord | null>(null);
+    const [isDeletingCustomerNote, setIsDeletingCustomerNote] = useState(false);
 
     const showAlert = (message: string, type: 'success' | 'error') => setAlertInfo({ message, type });
 
@@ -125,9 +128,27 @@ export const SalesModule: React.FC = () => {
         setLoadingRuc(true);
         try {
             if (docType === 'BOLETA' && clientDoc.length === 8) {
+                setCustomerNote(null);
+                try {
+                    const seller = await BackendService.getSeller(clientDoc);
+                    if (seller?.full_name) {
+                        setClientName(String(seller.full_name).toUpperCase());
+                    }
+                    if ((seller?.note || '').trim()) {
+                        setCustomerNote({
+                            id: String(seller.id),
+                            docNumber: seller.doc_number || clientDoc,
+                            fullName: seller.full_name || '',
+                            phone: seller.phone || '',
+                            address: seller.address || '',
+                            note: seller.note || '',
+                        });
+                    }
+                } catch {}
                 const info = await fetchDni(clientDoc);
-                setClientName((info.fullName || '').toUpperCase());
+                setClientName(prev => (info.fullName || prev || '').toUpperCase());
             } else if (docType === 'FACTURA' && clientDoc.length === 11) {
+                setCustomerNote(null);
                 const info = await fetchRuc(clientDoc);
                 setClientName((info.razonSocial || info.nombreComercial || '').toUpperCase());
             } else {
@@ -137,6 +158,20 @@ export const SalesModule: React.FC = () => {
             showAlert('No se pudo consultar los datos del documento', 'error');
         } finally {
             setLoadingRuc(false);
+        }
+    };
+
+    const handleDeleteCustomerNote = async () => {
+        if (!customerNote?.id) return;
+        setIsDeletingCustomerNote(true);
+        try {
+            await BackendService.updateCustomer(customerNote.id, { note: '' });
+            setCustomerNote(null);
+            showAlert('Nota del cliente eliminada', 'success');
+        } catch {
+            showAlert('No se pudo eliminar la nota del cliente', 'error');
+        } finally {
+            setIsDeletingCustomerNote(false);
         }
     };
 
@@ -263,6 +298,7 @@ export const SalesModule: React.FC = () => {
             setCart([]);
             setClientDoc('');
             setClientName('');
+            setCustomerNote(null);
             loadStock();
         }
     };
@@ -270,19 +306,28 @@ export const SalesModule: React.FC = () => {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in relative">
             {alertInfo && <CustomAlert message={alertInfo.message} type={alertInfo.type} onClose={() => setAlertInfo(null)} />}
+            <CustomerNoteModal
+                open={Boolean(customerNote?.note)}
+                customerName={customerNote?.fullName || clientName}
+                docNumber={customerNote?.docNumber || clientDoc}
+                note={customerNote?.note || ''}
+                deleting={isDeletingCustomerNote}
+                onClose={() => setCustomerNote(null)}
+                onDelete={handleDeleteCustomerNote}
+            />
             <div className="lg:col-span-2 space-y-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-black text-slate-800 uppercase text-sm tracking-widest">Datos del Cliente</h3>
                         <div className="flex bg-gray-200 p-1 rounded-lg">
                             <button 
-                                onClick={() => { setDocType('BOLETA'); setClientDoc(''); setClientName(''); }}
+                                onClick={() => { setDocType('BOLETA'); setClientDoc(''); setClientName(''); setCustomerNote(null); }}
                                 className={`px-4 py-1 text-sm rounded-md font-black transition-all ${docType === 'BOLETA' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
                             >
                                 Boleta
                             </button>
                             <button 
-                                onClick={() => { setDocType('FACTURA'); setClientDoc(''); setClientName(''); }}
+                                onClick={() => { setDocType('FACTURA'); setClientDoc(''); setClientName(''); setCustomerNote(null); }}
                                 className={`px-4 py-1 text-sm rounded-md font-black transition-all ${docType === 'FACTURA' ? 'bg-purple-700 shadow text-white' : 'text-slate-500'}`}
                             >
                                 Factura
@@ -299,7 +344,7 @@ export const SalesModule: React.FC = () => {
                                 <input 
                                     type="text" 
                                     value={clientDoc}
-                                    onChange={(e) => setClientDoc(e.target.value.toUpperCase())}
+                                    onChange={(e) => { setClientDoc(e.target.value.toUpperCase()); setCustomerNote(null); }}
                                     onBlur={() => { 
                                         if ((docType === 'BOLETA' && clientDoc.length === 8) || (docType === 'FACTURA' && clientDoc.length === 11)) handleConsultRuc(); 
                                     }}

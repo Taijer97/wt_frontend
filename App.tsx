@@ -12,6 +12,7 @@ import { PayrollModule } from './components/PayrollModule';
 import { ExpensesModule } from './components/ExpensesModule';
 import { SireModule } from './components/SireModule'; 
 import { DataUpdateModule } from './components/DataUpdateModule';
+import { CustomersModule } from './components/CustomersModule';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { FileText, Loader2 } from 'lucide-react';
@@ -96,14 +97,15 @@ const App: React.FC = () => {
 
     const connect = () => {
       const isDev = !!(import.meta as any).env?.DEV;
-      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+      const configuredBase = String((import.meta as any).env?.VITE_API_BASE_URL || '').trim();
+      const base = configuredBase || 'http://localhost:8001';
       
       // Determine correct protocol for WebSockets (ws or wss) based on the connection protocol (http or https)
       let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
       // Construir la URL del WS dependiendo de si es dev o prod
       let wsUrl = '';
-      if (isDev) {
+      if (isDev && !configuredBase) {
          wsUrl = `${wsProtocol}//${window.location.host}/ws/updates`;
       } else {
          // Si la base es https://, usar wss://
@@ -195,6 +197,8 @@ const App: React.FC = () => {
         return <Dashboard />;
       case 'compras':
         return <PurchaseModule />;
+      case 'clientes':
+        return <CustomersModule />;
       case 'compras-mayoristas':
         return <DirectPurchaseModule />;
       case 'inventario':

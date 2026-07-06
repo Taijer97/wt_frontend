@@ -1,6 +1,6 @@
 import api from './api';
 import axios from 'axios';
-import { Employee, Product, Intermediary, ExpenseStatus, Supplier } from '../types';
+import { Employee, Product, Intermediary, ExpenseStatus, Supplier, CustomerRecord } from '../types';
 
 const LS_SESSION = 'mype_session';
 const CACHE_PREFIX = 'api_cache_';
@@ -482,9 +482,12 @@ export const BackendService = {
     status: string;
     pdfUrl: string | null;
     providerName: string | null;
+    supplierId: string | number | null;
     productBrand: string | null;
     productModel: string | null;
     productSerial: string | null;
+    productIdType: string | null;
+    productCondition: string | null;
     sellerDocNumber: string | null;
     sellerFullName: string | null;
     sellerPhone: string | null;
@@ -492,17 +495,22 @@ export const BackendService = {
     bankName: string | null;
     bankAccount: string | null;
     baseAmount: number | null;
+    totalAmount: number | null;
     intermediaryId: string | null;
     date: string | null;
     blockNumber: number | null;
+    items: { category?: string; brand?: string; model?: string; serial?: string; specs?: string; cost?: number; supplierId?: string | number | null }[] | null;
   }>) {
     const res = await api.put(`/purchases/${id}`, {
       status: payload.status,
       pdf_url: payload.pdfUrl,
       provider_name: payload.providerName,
+      supplier_id: payload.supplierId !== undefined ? (payload.supplierId ? Number(payload.supplierId) : null) : undefined,
       product_brand: payload.productBrand,
       product_model: payload.productModel,
       product_serial: payload.productSerial,
+      product_id_type: payload.productIdType,
+      product_condition: payload.productCondition,
       seller_doc_number: payload.sellerDocNumber,
       seller_full_name: payload.sellerFullName,
       seller_phone: payload.sellerPhone,
@@ -510,9 +518,19 @@ export const BackendService = {
       bank_name: payload.bankName,
       bank_account: payload.bankAccount,
       base_amount: payload.baseAmount,
+      total_amount: payload.totalAmount,
       intermediary_id: payload.intermediaryId ? Number(payload.intermediaryId) : null,
       date: payload.date,
-      block_number: payload.blockNumber
+      block_number: payload.blockNumber,
+      items: payload.items?.map(it => ({
+        category: it.category,
+        brand: it.brand,
+        model: it.model,
+        serial: it.serial,
+        specs: it.specs,
+        cost: it.cost,
+        supplier_id: it.supplierId ? Number(it.supplierId) : null,
+      })),
     });
     clearCache('purchases');
     return res.data;
@@ -624,7 +642,7 @@ export const BackendService = {
   async getTransactions(trxType?: 'sale' | 'purchase' | 'transfer', forceRefresh = false) {
     const key = `transactions_${trxType || 'all'}`;
     return getCached(key, async () => {
-      const res = await api.get('/transactions');
+      const res = await api.get('/transactions', { params: trxType ? { trx_type: trxType } : undefined });
       const items = res.data as any[];
       const filtered = trxType ? items.filter((t: any) => t.trx_type === trxType) : items;
       return filtered.map((t: any) => ({
@@ -744,6 +762,42 @@ export const BackendService = {
   async getSeller(docNumber: string) {
     const res = await api.get(`/purchases/sellers/${docNumber}`);
     return res.data;
+  },
+  async getCustomers(forceRefresh = false): Promise<CustomerRecord[]> {
+    return getCached('customers', async () => {
+      const res = await api.get('/sellers');
+      return (res.data || []).map((s: any) => ({
+        id: String(s.id),
+        docNumber: s.doc_number,
+        fullName: s.full_name,
+        phone: s.phone || '',
+        address: s.address || '',
+        civilStatus: s.civil_status || '',
+        email: s.email || '',
+        note: s.note || '',
+      }));
+    }, forceRefresh);
+  },
+  async updateCustomer(id: string, payload: Partial<CustomerRecord>) {
+    const res = await api.put(`/sellers/${id}`, {
+      full_name: payload.fullName,
+      phone: payload.phone,
+      address: payload.address,
+      civil_status: payload.civilStatus,
+      email: payload.email,
+      note: payload.note ?? null,
+    });
+    clearCache('customers');
+    return {
+      id: String(res.data.id),
+      docNumber: res.data.doc_number,
+      fullName: res.data.full_name,
+      phone: res.data.phone || '',
+      address: res.data.address || '',
+      civilStatus: res.data.civil_status || '',
+      email: res.data.email || '',
+      note: res.data.note || '',
+    } as CustomerRecord;
   },
   async createRole(payload: any) {
     const res = await api.post('/roles', payload);

@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const target = env.VITE_API_BASE_URL || 'http://localhost:8000';
+    const target = env.VITE_API_BASE_URL || 'http://localhost:8001';
     const proxy: Record<string, any> = {
       '/auth': { target, changeOrigin: true, secure: false },
       '/employees': { target, changeOrigin: true, secure: false },

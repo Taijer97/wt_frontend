@@ -112,6 +112,17 @@ export interface Intermediary {
   address: string;
 }
 
+export interface CustomerRecord {
+  id: string;
+  docNumber: string;
+  fullName: string;
+  phone?: string;
+  address?: string;
+  civilStatus?: string;
+  email?: string;
+  note?: string;
+}
+
 export interface Supplier {
   id: string;
   ruc: string;

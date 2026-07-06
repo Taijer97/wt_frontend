@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Product, ProductStatus, Intermediary, Transaction, ReceiptType } from '../types';
 import { BackendService } from '../services/backendService';
 import { ArrowRight, Calculator, RefreshCw, Upload, FileText, CheckCircle, Package, Building2, Search, Calendar, History, Camera, X, Printer, ShieldCheck, UserCheck, FileCheck, Trash2 } from 'lucide-react';
 
 export const InventoryTransferModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'ruc10' | 'ruc20' | 'history'>('ruc10');
-    const [historySubTab, setHistorySubTab] = useState<'transactions' | 'purchases'>('transactions');
     const [searchTerm, setSearchTerm] = useState('');
     const [products, setProducts] = useState<Product[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [purchases, setPurchases] = useState<any[]>([]);
     const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
     const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
     const [transferCalc, setTransferCalc] = useState({ base: 0, igv: 0, total: 0 });
@@ -47,33 +45,25 @@ export const InventoryTransferModule: React.FC = () => {
     const loadData = async (forceRefresh = false) => {
         if (!forceRefresh) setIsLoadingData(true);
         try {
-            // @ts-ignore - BackendService supports forceRefresh
-            const [prods, inters, trxs, purchs, cfg] = await Promise.all([
+            const [prods, inters, trxs, cfg] = await Promise.all([
                 BackendService.getProducts(forceRefresh),
                 BackendService.getIntermediaries(forceRefresh),
-                BackendService.getTransactions(undefined, forceRefresh),
-                BackendService.getPurchases(undefined, forceRefresh),
+                BackendService.getTransactions('transfer', forceRefresh),
                 BackendService.getConfig(forceRefresh)
             ]);
             setProducts(prods);
             setIntermediaries(inters);
             setTransactions(trxs);
-            setPurchases(purchs);
             setConfig(cfg);
         } catch (error) {
             console.error("Error loading data", error);
         } finally {
-            if (!forceRefresh) setIsLoadingData(false);
+            setIsLoadingData(false);
         }
     };
 
     useEffect(() => {
         loadData(false);
-        // Background update for better UX
-        const bgUpdate = async () => {
-            await loadData(true);
-        };
-        setTimeout(bgUpdate, 100);
     }, []);
 
     useEffect(() => {
@@ -82,22 +72,22 @@ export const InventoryTransferModule: React.FC = () => {
         }
     }, [docSeries, transactions]);
 
-    const ruc10Products = products.filter(p => 
+    const ruc10Products = useMemo(() => products.filter(p => 
         p.status === ProductStatus.IN_STOCK_RUC10 && 
         (p.brand?.toUpperCase().includes(searchTerm) || 
          p.model?.toUpperCase().includes(searchTerm) || 
          p.serialNumber?.toUpperCase().includes(searchTerm))
-    );
-    const ruc20Products = products.filter(p => 
+    ), [products, searchTerm]);
+    const ruc20Products = useMemo(() => products.filter(p => 
         p.status === ProductStatus.TRANSFERRED_RUC20 && 
         (p.brand?.toUpperCase().includes(searchTerm) || 
          p.model?.toUpperCase().includes(searchTerm) || 
          p.serialNumber?.toUpperCase().includes(searchTerm))
-    );
+    ), [products, searchTerm]);
 
-    const selectedTransferProducts = products.filter(
+    const selectedTransferProducts = useMemo(() => products.filter(
         p => selectedProductIds.includes(p.id) && p.status === ProductStatus.IN_STOCK_RUC10
-    );
+    ), [products, selectedProductIds]);
 
     const calcForProduct = (product: Product) => {
         const totalCost = product.totalCost || 0;

@@ -31,6 +31,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
   // Define menu items access based on Role
   const allNavItems: { id: string; label: string; icon: any; roles: UserRole[]; moduleId: AppModule }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'CAJA', 'RRHH', 'USER'], moduleId: 'dashboard' },
+    { id: 'clientes', label: 'Clientes y Notas', icon: Users, roles: ['ADMIN', 'CAJA', 'RRHH', 'USER'], moduleId: 'dashboard' },
     { id: 'compras', label: 'Compras Personas (RUC 10)', icon: ShoppingCart, roles: ['ADMIN', 'USER'], moduleId: 'purchases_ruc10' },
     { id: 'compras-mayoristas', label: 'Compras Mayoristas (RUC 20)', icon: Truck, roles: ['ADMIN', 'CAJA'], moduleId: 'purchases_ruc20' },
     { id: 'inventario', label: 'Inventario & Transf.', icon: ArrowRightLeft, roles: ['ADMIN', 'USER', 'CAJA'], moduleId: 'inventory' },

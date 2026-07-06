@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { Save, Upload, FileText, AlertTriangle, User, Monitor, DollarSign, Clock, CheckCircle, Search, Paperclip, Printer, ScrollText, X, ShieldCheck, Camera, FileDigit, FileType, History, Tag, Package, Trash2, Pencil, Download, Eye, ArrowRight, RefreshCw, Edit3 } from 'lucide-react';
-import { CivilStatus, HardwareOrigin, PurchaseEntry, PurchaseStatus, AppConfig, Employee, Intermediary, Supplier } from '../types';
+import { CivilStatus, HardwareOrigin, PurchaseEntry, PurchaseStatus, AppConfig, Employee, Intermediary, Supplier, CustomerRecord } from '../types';
 import { DataService } from '../services/dataService';
 import { fetchDni } from '../services/dniService';
 import { BackendService } from '../services/backendService';
+import { CustomerNoteModal } from './CustomerNoteModal';
 
 // --- CUSTOM ALERT COMPONENT ---
 const CustomAlert = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
@@ -31,6 +32,8 @@ const CustomAlert = ({ message, type, onClose }: { message: string, type: 'succe
 
 const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Intermediary[], onClose: () => void, onSave: (data: any) => Promise<void> }> = ({ purchase, intermediaries, onClose, onSave }) => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const config = DataService.getConfig();
+    const categoryOptions = Array.from(new Set((config.productCatalog || []).map(c => c.category))).filter(Boolean);
     const toDateInputValue = (value?: any) => {
         const fallback = new Date().toISOString().split('T')[0];
         if (!value) return fallback;
@@ -70,15 +73,54 @@ const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Int
         baseAmount: purchase.priceAgreed || 0,
         intermediaryId: purchase.intermediaryId || '',
         supplierId: purchase.supplierId || '',
+        productType: purchase.productType || categoryOptions[0] || config.productCategories[0] || 'Laptop',
+        productBrand: purchase.productBrand || '',
+        productModel: purchase.productModel || '',
+        productSerial: purchase.productSerial || '',
+        productIdType: purchase.productIdType || 'SERIE',
+        productCondition: purchase.productCondition || 'USADO',
         date: toDateInputValue(purchase.date),
         blockNumber: purchase.blockNumber || 1
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [formError, setFormError] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setFormError('');
+        const currentSerial = String(formData.productSerial || '').trim().toUpperCase();
+        const currentSupplierId = String(formData.supplierId || '').trim();
+        if (currentSerial) {
+            try {
+                const page = await BackendService.getPurchasesPaged({ type: 'RUC10', q: currentSerial, limit: 50, offset: 0 }, true);
+                const matches = ((page?.items || []) as any[]).filter((p: any) =>
+                    String(p?.id) !== String(purchase.id) &&
+                    String(p?.product_serial || '').trim().toUpperCase() === currentSerial
+                );
+                if (matches.length > 0) {
+                    const sameOriginStore = matches.some((p: any) => String(p?.supplier_id || '').trim() === currentSupplierId);
+                    if (sameOriginStore) {
+                        setFormError('Serie repetida en la misma tienda de origen. Cambie Proveedor Rel. o la serie para poder continuar.');
+                        return;
+                    }
+                    const continueSave = window.confirm('La serie ya existe en otra tienda de origen. Revise el dato antes de continuar. ¿Desea guardar de todos modos?');
+                    if (!continueSave) return;
+                }
+            } catch {}
+        }
         setIsSaving(true);
-        await onSave(formData);
+        await onSave({
+            ...formData,
+            totalAmount: Number(formData.baseAmount || 0),
+            items: [{
+                category: formData.productType || '',
+                brand: formData.productBrand || '',
+                model: formData.productModel || '',
+                serial: formData.productSerial || '',
+                cost: Number(formData.baseAmount || 0),
+                supplierId: formData.supplierId || null,
+            }],
+        });
         setIsSaving(false);
     };
 
@@ -93,6 +135,11 @@ const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Int
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {formError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-black uppercase tracking-wide text-red-700">
+                            {formError}
+                        </div>
+                    )}
                     <div className="space-y-4">
                         <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Datos del Vendedor</h4>
                         <div className="grid grid-cols-2 gap-4">
@@ -111,6 +158,54 @@ const EditPurchaseModal: React.FC<{ purchase: PurchaseEntry, intermediaries: Int
                             <div className="col-span-2 md:col-span-1">
                                 <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Dirección</label>
                                 <input value={formData.sellerAddress} onChange={e => setFormData({...formData, sellerAddress: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Proveedor y Detalle del Equipo</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Proveedor Rel.</label>
+                                <select value={formData.supplierId} onChange={e => setFormData({...formData, supplierId: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">
+                                    <option value="">Seleccionar...</option>
+                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.shortName || s.razonSocial}</option>)}
+                                </select>
+                            </div>
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Tipo de Bien</label>
+                                <select value={formData.productType} onChange={e => setFormData({...formData, productType: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">
+                                    {[...new Set([formData.productType, ...categoryOptions, ...(config.productCategories || [])].filter(Boolean))].map(category => (
+                                        <option key={category} value={category}>{category}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Marca</label>
+                                <input value={formData.productBrand} onChange={e => setFormData({...formData, productBrand: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required />
+                            </div>
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label>
+                                <input value={formData.productModel} onChange={e => setFormData({...formData, productModel: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required />
+                            </div>
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Serie</label>
+                                <input value={formData.productSerial} onChange={e => setFormData({...formData, productSerial: e.target.value.toUpperCase()})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black text-slate-900 uppercase" required />
+                            </div>
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Tipo de ID</label>
+                                <select value={formData.productIdType} onChange={e => setFormData({...formData, productIdType: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">
+                                    <option value="SERIE">SERIE</option>
+                                    <option value="IMEI">IMEI</option>
+                                </select>
+                            </div>
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Condición</label>
+                                <select value={formData.productCondition} onChange={e => setFormData({...formData, productCondition: e.target.value})} className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-black uppercase text-xs">
+                                    <option value="USADO">USADO</option>
+                                    <option value="REACONDICIONADO">REACONDICIONADO</option>
+                                    <option value="NUEVO">NUEVO</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -316,20 +411,24 @@ export const PurchaseModule: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('¿Eliminar esta compra RUC 10? El equipo se retirará del stock (si no ha sido vendido o transferido).')) {
-      BackendService.deletePurchase(id)
-        .then(async () => {
-          setPendingRefreshKey(k => k + 1);
-          setHistoryRefreshKey(k => k + 1);
-          await refreshCounts(true);
-        })
-        .catch(async () => {
-          DataService.deletePurchaseRuc10(id);
-          setPendingRefreshKey(k => k + 1);
-          setHistoryRefreshKey(k => k + 1);
-          await refreshCounts(true);
-        });
-    }
+    BackendService.deletePurchase(id)
+      .then(async (result) => {
+        setPendingRefreshKey(k => k + 1);
+        setHistoryRefreshKey(k => k + 1);
+        await refreshCounts(true);
+        if (result?.reverted_to_pending) {
+          setAlertInfo({ message: 'La compra salió del historial y volvió a Pendientes', type: 'success' });
+        } else {
+          setAlertInfo({ message: 'Compra eliminada', type: 'success' });
+        }
+      })
+      .catch(async () => {
+        DataService.deletePurchaseRuc10(id);
+        setPendingRefreshKey(k => k + 1);
+        setHistoryRefreshKey(k => k + 1);
+        await refreshCounts(true);
+        setAlertInfo({ message: 'Compra eliminada', type: 'success' });
+      });
   };
 
   return (
@@ -523,6 +622,17 @@ export const PurchaseModule: React.FC = () => {
 
 const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title: string, fileName?: string, icon: React.ReactNode, purchaseId: string, docKind: 'voucher' | 'contract' | 'dj' }) => {
     const fileUrl = fileName ? BackendService.resolveUrl(`/purchases/${purchaseId}/download/${docKind}`) : '#';
+    const apiBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8001').replace(/\/$/, '');
+    const getSessionToken = () => {
+        try {
+            const raw = localStorage.getItem('mype_session');
+            if (!raw) return '';
+            const session = JSON.parse(raw);
+            return session?.token || '';
+        } catch {
+            return '';
+        }
+    };
 
     return (
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center space-y-4 group hover:border-blue-500 transition-all">
@@ -537,11 +647,10 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                             // Construir la URL completa
                             let finalUrl = fileUrl;
                             if (fileUrl.startsWith('/')) {
-                                const baseUrl = localStorage.getItem('apiUrl') || 'http://127.0.0.1:8000';
-                                finalUrl = `${baseUrl}${fileUrl}`;
+                                finalUrl = `${apiBaseUrl}${fileUrl}`;
                             }
                             
-                            const token = localStorage.getItem('token') || '';
+                            const token = getSessionToken();
                             if (token && !finalUrl.includes('token=')) {
                                 const separator = finalUrl.includes('?') ? '&' : '?';
                                 finalUrl = `${finalUrl}${separator}token=${token}`;
@@ -550,7 +659,7 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                             const res = await fetch(`${finalUrl}${finalUrl.includes('?') ? '&' : '?'}view=true`, {
                                 headers: {
                                     'ngrok-skip-browser-warning': 'true',
-                                    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+                                    'Authorization': `Bearer ${token}`
                                 }
                             });
                             const blob = await res.blob();
@@ -571,11 +680,10 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                             // Construir la URL completa
                             let finalUrl = fileUrl;
                             if (fileUrl.startsWith('/')) {
-                                const baseUrl = localStorage.getItem('apiUrl') || 'http://127.0.0.1:8000';
-                                finalUrl = `${baseUrl}${fileUrl}`;
+                                finalUrl = `${apiBaseUrl}${fileUrl}`;
                             }
                             
-                            const token = localStorage.getItem('token') || '';
+                            const token = getSessionToken();
                             if (token && !finalUrl.includes('token=')) {
                                 const separator = finalUrl.includes('?') ? '&' : '?';
                                 finalUrl = `${finalUrl}${separator}token=${token}`;
@@ -584,7 +692,7 @@ const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title
                             const res = await fetch(finalUrl, {
                                 headers: {
                                     'ngrok-skip-browser-warning': 'true',
-                                    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+                                    'Authorization': `Bearer ${token}`
                                 }
                             });
                             const blob = await res.blob();
@@ -642,6 +750,8 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
     condicion: 'USADO' as any, origen: HardwareOrigin.DECLARACION_JURADA, precioPactado: '', supplierId: '', banco: 'BCP', cuentaBancaria: '', blockNumber: '1',
     opDate: new Date().toISOString().split('T')[0],
   });
+  const [customerNote, setCustomerNote] = useState<CustomerRecord | null>(null);
+  const [isDeletingCustomerNote, setIsDeletingCustomerNote] = useState(false);
 
   useEffect(() => {
     BackendService.getPurchaseBlocks({ type: 'RUC10' })
@@ -685,11 +795,15 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
     const isSelect = String(t.tagName).toUpperCase() === 'SELECT';
     const passthrough = t.type === 'email' || t.type === 'number' || t.type === 'date' || isSelect;
     const v = passthrough ? t.value : String(t.value || '').toUpperCase();
+    if (t.name === 'dni') {
+      setCustomerNote(null);
+    }
     setFormData({...formData, [t.name]: v});
   };
   const handleDniBlur = async () => {
     const dni = (formData.dni || '').trim();
     if (!dni || dni.length < 8) return;
+    setCustomerNote(null);
     let sellerLoaded = false;
     try {
       // Primero buscar en base de datos interna
@@ -703,6 +817,16 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
               banco: seller.bank_name || prev.banco,
               cuentaBancaria: seller.bank_account || prev.cuentaBancaria
           }));
+          if ((seller.note || '').trim()) {
+              setCustomerNote({
+                  id: String(seller.id),
+                  docNumber: seller.doc_number || dni,
+                  fullName: seller.full_name || '',
+                  phone: seller.phone || '',
+                  address: seller.address || '',
+                  note: seller.note || '',
+              });
+          }
           showAlert("Datos cargados del historial", "success");
           sellerLoaded = true;
       }
@@ -721,6 +845,20 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
         showAlert("Domicilio actualizado desde RENIEC", "success");
       }
     } catch {}
+  };
+
+  const handleDeleteCustomerNote = async () => {
+    if (!customerNote?.id) return;
+    setIsDeletingCustomerNote(true);
+    try {
+      await BackendService.updateCustomer(customerNote.id, { note: '' });
+      setCustomerNote(null);
+      showAlert("Nota del cliente eliminada", "success");
+    } catch {
+      showAlert("No se pudo eliminar la nota del cliente", "error");
+    } finally {
+      setIsDeletingCustomerNote(false);
+    }
   };
 
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
@@ -797,6 +935,15 @@ const RegisterForm: React.FC<{ onSuccess: () => void, intermediaries: Intermedia
 
   return (
     <div className="space-y-6">
+        <CustomerNoteModal
+            open={Boolean(customerNote?.note)}
+            customerName={customerNote?.fullName}
+            docNumber={customerNote?.docNumber}
+            note={customerNote?.note || ''}
+            deleting={isDeletingCustomerNote}
+            onClose={() => setCustomerNote(null)}
+            onDelete={handleDeleteCustomerNote}
+        />
         {/* PROGRESS INDICATOR */}
         <div className="flex justify-end mb-4">
             <div className="bg-slate-900 p-2 rounded-2xl flex gap-2 shadow-xl">
@@ -1158,7 +1305,11 @@ const PurchaseHistory: React.FC<{
                                     <div className="flex justify-center gap-2">
                                         {canRead && <button onClick={() => onViewSupport(item)} className="p-2.5 bg-slate-100 text-slate-500 hover:bg-blue-600 hover:text-white rounded-xl shadow-sm transition-all" title="Ver Expediente Auditoría"><Eye className="w-4 h-4"/></button>}
                                         {canUpdate && <button onClick={() => onEdit(item)} className="p-2.5 bg-slate-100 text-slate-500 hover:bg-slate-800 hover:text-white rounded-xl shadow-sm transition-all" title="Editar Información"><Edit3 className="w-4 h-4"/></button>}
-                                        {canDelete && <button onClick={() => onDelete(item.id)} className="p-2.5 bg-red-50 text-red-400 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all" title="Eliminar Registro"><Trash2 className="w-4 h-4"/></button>}
+                                        {canDelete && <button onClick={() => {
+                                            if (confirm('¿Quitar esta compra del Historial y devolverla a Pendientes? El equipo será retirado del stock si corresponde.')) {
+                                                onDelete(item.id);
+                                            }
+                                        }} className="p-2.5 bg-red-50 text-red-400 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all" title="Devolver a Pendientes"><Trash2 className="w-4 h-4"/></button>}
                                     </div>
                                 </td>
                             </tr>
