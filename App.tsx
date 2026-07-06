@@ -98,7 +98,7 @@ const App: React.FC = () => {
     const connect = () => {
       const isDev = !!(import.meta as any).env?.DEV;
       const configuredBase = String((import.meta as any).env?.VITE_API_BASE_URL || '').trim();
-      const base = configuredBase || 'http://localhost:8001';
+      const base = configuredBase || 'http://localhost:8000';
       
       // Determine correct protocol for WebSockets (ws or wss) based on the connection protocol (http or https)
       let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

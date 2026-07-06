@@ -6,7 +6,7 @@ const configuredBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || 
 const api = axios.create({
   // Si VITE_API_BASE_URL está configurada, la usamos también en desarrollo.
   // Si no, Vite proxy resuelve las rutas relativas.
-  baseURL: configuredBaseUrl || (isDev ? '' : 'http://100.116.47.110:8001'),
+  baseURL: configuredBaseUrl || (isDev ? '' : 'http://100.116.47.110:8000'),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

@@ -622,7 +622,7 @@ export const PurchaseModule: React.FC = () => {
 
 const SupportFileCard = ({ title, fileName, icon, purchaseId, docKind }: { title: string, fileName?: string, icon: React.ReactNode, purchaseId: string, docKind: 'voucher' | 'contract' | 'dj' }) => {
     const fileUrl = fileName ? BackendService.resolveUrl(`/purchases/${purchaseId}/download/${docKind}`) : '#';
-    const apiBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8001').replace(/\/$/, '');
+    const apiBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
     const getSessionToken = () => {
         try {
             const raw = localStorage.getItem('mype_session');
