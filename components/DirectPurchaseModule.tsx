@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
@@ -7,13 +6,15 @@ import {
   Plus, Trash2, ShoppingCart, Barcode, Save, Truck, History, Search, FileText, Calendar,
   CheckCircle, Package, ArrowRight, Clock, Upload, X, FileSearch, AlertCircle, Info, Tag, Pencil, Download
 } from 'lucide-react';
+import { useAlert } from './ui/Alert';
 
 export const DirectPurchaseModule: React.FC = () => {
+    const toast = useAlert();
     const config = DataService.getConfig();
     const [activeTab, setActiveTab] = useState<'register' | 'pending' | 'history'>('register');
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [selectedSupplierId, setSelectedSupplierId] = useState('');
-    const [docSeries, setDocSeries] = useState('F001');
+    const [docSeries, setDocSeries] = useState('FF01');
     const [docNumber, setDocNumber] = useState('');
     const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
     const [wholesalePurchases, setWholesalePurchases] = useState<WholesalePurchaseEntry[]>([]);
@@ -22,8 +23,16 @@ export const DirectPurchaseModule: React.FC = () => {
     const [newItem, setNewItem] = useState({ category: '', brand: '', model: '', capacity: '', serial: '', cost: '', specs: '' });
     const [regularizingItem, setRegularizingItem] = useState<WholesalePurchaseEntry | null>(null);
 
-    const catalog = config.productCatalog || [];
-    const categories = Array.from(new Set(catalog.map(c => c.category))).sort();
+    const [relationalCatalog, setRelationalCatalog] = useState<any[]>([]);
+
+    useEffect(() => {
+        BackendService.getCatalogProducts()
+            .then(prods => setRelationalCatalog(prods))
+            .catch(() => {});
+    }, []);
+
+    const catalog = relationalCatalog.length > 0 ? relationalCatalog : config.productCatalog || [];
+    const categories = Array.from(new Set(catalog.map((c: any) => c.category))).filter(Boolean).sort();
     
     // Auto-set initial category
     useEffect(() => {
@@ -34,9 +43,9 @@ export const DirectPurchaseModule: React.FC = () => {
         }
     }, [categories, config.productCategories, newItem.category]);
 
-    const brandsForCat = Array.from(new Set(catalog.filter(c => c.category === newItem.category).map(c => c.brand))).sort();
-    const modelsForBrand = catalog.filter(c => c.category === newItem.category && c.brand === newItem.brand).map(c => c.model).sort();
-    const capacitiesForModel = catalog.filter(c => c.category === newItem.category && c.brand === newItem.brand && c.model === newItem.model && c.capacity).map(c => c.capacity as string).sort();
+    const brandsForCat = Array.from(new Set(catalog.filter((c: any) => c.category === newItem.category).map((c: any) => c.brand))).filter(Boolean).sort();
+    const modelsForBrand = Array.from(new Set(catalog.filter((c: any) => c.category === newItem.category && c.brand === newItem.brand).map((c: any) => c.model))).filter(Boolean).sort();
+    const capacitiesForModel = Array.from(new Set(catalog.filter((c: any) => c.category === newItem.category && c.brand === newItem.brand && c.model === newItem.model && (c.specsCapacity || c.capacity)).map((c: any) => (c.specsCapacity || c.capacity) as string))).filter(Boolean).sort();
 
     // Auto-select brand/model/capacity
     useEffect(() => {
@@ -184,7 +193,7 @@ export const DirectPurchaseModule: React.FC = () => {
 
     const handleRegisterPending = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedSupplierId || !docNumber || items.length === 0) return alert('Datos incompletos.');
+        if (!selectedSupplierId || !docNumber || items.length === 0) { toast.warning('Datos incompletos.'); return; }
         const supplier = suppliers.find(s => s.id === selectedSupplierId);
         if (!supplier) return;
         const fullDocNumber = `${docSeries.toUpperCase().trim()}-${docNumber.trim().padStart(8, '0')}`;
@@ -214,11 +223,11 @@ export const DirectPurchaseModule: React.FC = () => {
                 cost: i.cost 
             })) as any,
           } as any);
-            alert('Compra registrada como PENDIENTE. Cargue la factura PDF para ingresar el stock.');
+            toast.info('Compra registrada como PENDIENTE. Cargue la factura PDF para ingresar el stock.');
             setItems([]); setDocNumber(''); setSelectedSupplierId(''); setActiveTab('pending');
             loadData(true);
         } catch {
-            alert('Error al registrar compra mayorista');
+            toast.error('Error al registrar compra mayorista');
         } finally {
             setIsProcessing(false);
         }
@@ -306,7 +315,7 @@ export const DirectPurchaseModule: React.FC = () => {
                 isIgvExempt: false,
             });
         }
-        alert('Stock ingresado y compra sustentada correctamente.');
+        toast.success('Stock ingresado y compra sustentada correctamente.');
         setRegularizingItem(null); setUploadingPdf(null); setUploadFileObj(null); await loadData();
         setActiveTab('history');
         setIsProcessing(false);
@@ -342,7 +351,7 @@ export const DirectPurchaseModule: React.FC = () => {
                                     <label className="block text-[10px] font-black text-slate-500 uppercase">Fecha Emisión</label>
                                     <input type="date" required value={docDate} onChange={e => setDocDate(e.target.value)} className="w-full border-2 border-slate-50 rounded-xl p-3 bg-slate-50 font-black outline-none focus:bg-white" />
                                 </div>
-                                <div className="space-y-2"><label className="block text-[10px] font-black text-slate-500 uppercase">Serie Factura</label><input value={docSeries} onChange={e => setDocSeries(e.target.value.toUpperCase())} className="w-full border-2 border-slate-50 rounded-xl p-3 font-mono font-black" placeholder="F001" maxLength={4} /></div>
+                                <div className="space-y-2"><label className="block text-[10px] font-black text-slate-500 uppercase">Serie Factura</label><input value={docSeries} onChange={e => setDocSeries(e.target.value.toUpperCase())} className="w-full border-2 border-slate-50 rounded-xl p-3 font-mono font-black" placeholder="FF01" maxLength={4} /></div>
                                 <div className="space-y-2"><label className="block text-[10px] font-black text-slate-500 uppercase">Número Factura</label><input required value={docNumber} onChange={e => setDocNumber(e.target.value.replace(/\D/g, ''))} className="w-full border-2 border-slate-50 rounded-xl p-3 font-mono font-black" placeholder="Ej: 852" /></div>
                             </div>
                         </div>

@@ -4,6 +4,7 @@
 export enum ProductStatus {
   IN_STOCK_RUC10 = 'EN_STOCK_PERSONA', 
   TRANSFERRED_RUC20 = 'TRANSFERIDO_EMPRESA', 
+  IN_TRANSFER_PENDING_VOUCHER = 'PENDIENTE_VOUCHER',
   SOLD = 'VENDIDO' 
 }
 
@@ -154,11 +155,35 @@ export interface ExpenseEntry {
 
 export type MarginType = 'PERCENT' | 'FIXED';
 
+export interface CatalogProduct {
+  id: number;
+  code: string;
+  sunatCode?: string;
+  barcode?: string;
+  category: string;
+  brand: string;
+  model: string;
+  specsCapacity?: string;
+  unitCode: string;
+  taxAffectation: string;
+  suggestedPrice: number;
+  isActive: boolean;
+}
+
 export interface ProductCatalogItem {
+  id?: number;
+  code?: string;
+  sunatCode?: string;
+  barcode?: string;
   category: string;
   brand: string;
   model: string;
   capacity?: string;
+  specsCapacity?: string;
+  unitCode?: string;
+  taxAffectation?: string;
+  suggestedPrice?: number;
+  isActive?: boolean;
 }
 
 export interface AppConfig {
@@ -174,6 +199,8 @@ export interface AppConfig {
   companyDistrict: string;
   companyPhone: string;
   companyEmail: string;
+  companyLogoUrl?: string;
+  watermarkText?: string;
   defaultNotaryCost: number;
   ruc10Margin: number; 
   ruc10MarginType: MarginType; 
@@ -229,6 +256,7 @@ export interface TransactionItem {
   quantity: number;
   unitPriceBase: number;
   totalBase: number;
+  price?: number;
 }
 
 export interface Transaction {
@@ -238,17 +266,21 @@ export interface Transaction {
   documentNumber: string;
   entityName: string;
   entityDocNumber: string;
+  entityAddress?: string;
   items: TransactionItem[];
   baseAmount: number;
   igvAmount: number;
   totalAmount: number;
-  sunatStatus?: 'ACEPTADO' | 'PENDIENTE' | 'RECHAZADO' | 'ANULADO';
+  sunatStatus?: 'ACEPTADO' | 'PENDIENTE' | 'RECHAZADO' | 'ANULADO' | 'ACCEPTED' | 'VOIDED' | 'REJECTED';
   pdfUrl?: string;
   xmlUrl?: string;
+  cdrUrl?: string;
+  sunat_description?: string;
+  sunatDescription?: string;
   voucherUrl?: string;
   isIgvExempt?: boolean;
   exemptionReason?: string;
-  trxType?: 'sale' | 'purchase' | 'transfer';
+  trxType?: 'sale' | 'purchase' | 'transfer' | 'credit_note' | 'credit_note_ruc10' | 'credit_note_ruc20' | string;
 }
 
 export interface Employee {

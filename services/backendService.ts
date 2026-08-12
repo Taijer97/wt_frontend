@@ -53,6 +53,7 @@ export const BackendService = {
     if (!s) return undefined as any;
     if (s === 'IN_STOCK_RUC10') return 'EN_STOCK_PERSONA' as any;
     if (s === 'TRANSFERRED_RUC20') return 'TRANSFERIDO_EMPRESA' as any;
+    if (s === 'IN_TRANSFER_PENDING_VOUCHER') return 'PENDIENTE_VOUCHER' as any;
     if (s === 'SOLD') return 'VENDIDO' as any;
     return s as any;
   },
@@ -60,6 +61,7 @@ export const BackendService = {
     if (!s) return undefined;
     if (s === 'EN_STOCK_PERSONA') return 'IN_STOCK_RUC10';
     if (s === 'TRANSFERIDO_EMPRESA') return 'TRANSFERRED_RUC20';
+    if (s === 'PENDIENTE_VOUCHER') return 'IN_TRANSFER_PENDING_VOUCHER';
     if (s === 'VENDIDO') return 'SOLD';
     return s;
   },
@@ -343,6 +345,7 @@ export const BackendService = {
     documentNumber: string;
     entityName: string;
     entityDocNumber: string;
+    entityAddress?: string;
     baseAmount: number;
     igvAmount: number;
     totalAmount: number;
@@ -355,6 +358,7 @@ export const BackendService = {
       document_number: payload.documentNumber,
       entity_name: payload.entityName,
       entity_doc_number: payload.entityDocNumber,
+      entity_address: payload.entityAddress,
       base_amount: payload.baseAmount,
       igv_amount: payload.igvAmount,
       total_amount: payload.totalAmount,
@@ -652,6 +656,7 @@ export const BackendService = {
         documentNumber: t.document_number,
         entityName: t.entity_name,
         entityDocNumber: t.entity_doc_number,
+        entityAddress: t.entity_address || t.entityAddress || '',
         items: (t.items || []).map((i: any) => ({
           productId: i.product_id ? String(i.product_id) : '',
           productName: i.product_name,
@@ -662,16 +667,26 @@ export const BackendService = {
         baseAmount: t.base_amount,
         igvAmount: t.igv_amount,
         totalAmount: t.total_amount,
-        sunatStatus: t.sunat_status || 'ACEPTADO',
-        pdfUrl: BackendService.resolveUrl(t.pdf_url),
-        xmlUrl: undefined,
-        isIgvExempt: false,
-        exemptionReason: undefined,
+        sunatStatus: t.sunat_status || 'PENDING',
+        pdfUrl: t.pdf_url,
+        xmlUrl: t.xml_url,
+        cdrUrl: t.cdr_url,
+        sunat_description: t.sunat_description,
+        sunat_response_code: t.sunat_response_code,
+        isIgvExempt: t.is_igv_exempt || false,
         // extras for UI
         voucherUrl: BackendService.resolveUrl(t.voucher_url),
         trxType: t.trx_type,
       }));
     }, forceRefresh);
+  },
+
+  clearTransactionsCache() {
+    clearCache('transactions');
+  },
+
+  clearProductsCache() {
+    clearCache('products');
   },
 
   async uploadTransactionFile(id: string, file: File, docKind: 'invoice' | 'voucher') {
@@ -694,7 +709,8 @@ export const BackendService = {
 
   async deleteTransaction(id: string) {
     const res = await api.delete(`/transactions/${id}`);
-    clearCache('transactions'); // Invalidate transactions cache
+    clearCache('transactions');
+    clearCache('products');
     return res.data;
   },
 
@@ -812,6 +828,48 @@ export const BackendService = {
   async deleteRole(id: string) {
     const res = await api.delete(`/roles/${id}`);
     clearCache('roles');
+    return res.data;
+  },
+
+  // Catalog Products API
+  async getCatalogProducts(search?: string, forceRefresh = false) {
+    const key = `catalog_products_${search || 'all'}`;
+    return getCached(key, async () => {
+      const res = await api.get('/catalog-products', { params: search ? { search } : undefined });
+      return (res.data as any[]).map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        sunatCode: c.sunat_code || c.sunatCode || '',
+        barcode: c.barcode || '',
+        category: c.category,
+        brand: c.brand,
+        model: c.model,
+        specsCapacity: c.specs_capacity || c.specsCapacity || '',
+        unitCode: c.unit_code || c.unitCode || 'NIU',
+        taxAffectation: c.tax_affectation || c.taxAffectation || '10',
+        suggestedPrice: c.suggested_price || c.suggestedPrice || 0,
+        isActive: c.is_active ?? c.isActive ?? true,
+      }));
+    }, forceRefresh);
+  },
+  async createCatalogProduct(payload: any) {
+    const res = await api.post('/catalog-products', payload);
+    clearCache('catalog_products');
+    return res.data;
+  },
+  async updateCatalogProduct(id: number, payload: any) {
+    const res = await api.put(`/catalog-products/${id}`, payload);
+    clearCache('catalog_products');
+    return res.data;
+  },
+  async deleteCatalogProduct(id: number) {
+    const res = await api.delete(`/catalog-products/${id}`);
+    clearCache('catalog_products');
+    return res.data;
+  },
+  async syncLegacyCatalog() {
+    const res = await api.post('/catalog-products/sync-from-legacy');
+    clearCache('catalog_products');
     return res.data;
   },
 };

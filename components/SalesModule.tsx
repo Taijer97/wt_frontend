@@ -34,7 +34,54 @@ export const SalesModule: React.FC = () => {
     const [docType, setDocType] = useState<'FACTURA' | 'BOLETA'>('FACTURA');
     const [clientDoc, setClientDoc] = useState('');
     const [clientName, setClientName] = useState('');
-    const [docSeries, setDocSeries] = useState('F001');
+    const [clientAddress, setClientAddress] = useState('');
+
+    const handleConsultRuc = async () => {
+        if(!clientDoc) return;
+        setLoadingRuc(true);
+        try {
+            if (docType === 'BOLETA' && clientDoc.length === 8) {
+                setCustomerNote(null);
+                let cachedAddr = '';
+                try {
+                    const seller = await BackendService.getSeller(clientDoc);
+                    if (seller?.full_name) {
+                        setClientName(String(seller.full_name).toUpperCase());
+                    }
+                    if (seller?.address) {
+                        cachedAddr = String(seller.address).toUpperCase();
+                        setClientAddress(cachedAddr);
+                    }
+                    if ((seller?.note || '').trim()) {
+                        setCustomerNote({
+                            id: String(seller.id),
+                            docNumber: seller.doc_number || clientDoc,
+                            fullName: seller.full_name || '',
+                            phone: seller.phone || '',
+                            address: seller.address || '',
+                            note: seller.note || '',
+                        });
+                    }
+                } catch {}
+                const info = await fetchDni(clientDoc);
+                setClientName(prev => (info.fullName || prev || '').toUpperCase());
+                setClientAddress(prev => (info.direccion || prev || cachedAddr || '').toUpperCase());
+            } else if (docType === 'FACTURA' && clientDoc.length === 11) {
+                setCustomerNote(null);
+                const info = await fetchRuc(clientDoc);
+                setClientName((info.razonSocial || info.nombreComercial || '').toUpperCase());
+                const fullAddr = [info.direccion, info.distrito, info.provincia, info.departamento].filter(Boolean).join(' - ');
+                setClientAddress((fullAddr || info.direccion || '').toUpperCase());
+            } else {
+                showAlert('Documento inválido', 'error');
+            }
+        } catch {
+            showAlert('No se pudo consultar los datos del documento', 'error');
+        } finally {
+            setLoadingRuc(false);
+        }
+    };
+    const [docSeries, setDocSeries] = useState('BB01');
     const [docCorrelative, setDocCorrelative] = useState('');
     const [cart, setCart] = useState<(Product & { finalPrice: number })[]>([]);
     const [loadingRuc, setLoadingRuc] = useState(false);
@@ -92,7 +139,7 @@ export const SalesModule: React.FC = () => {
     };
 
     const getNextCorrelative = (trxs: any[], type: string, series: string) => {
-        // Buscamos transacciones que coincidan con el tipo (FACTURA/BOLETA) y que empiecen con la serie (ej: F001)
+        // Buscamos transacciones que coincidan con el tipo (FACTURA/BOLETA) y que empiecen con la serie (ej: FF01)
         const filtered = trxs.filter(t => 
             t.trxType === 'sale' && 
             t.documentType === type && 
@@ -114,7 +161,7 @@ export const SalesModule: React.FC = () => {
     };
 
     useEffect(() => {
-        setDocSeries(docType === 'FACTURA' ? 'F001' : 'B001');
+        setDocSeries(docType === 'FACTURA' ? 'FF01' : 'BB01');
     }, [docType]);
 
     useEffect(() => {
@@ -123,43 +170,7 @@ export const SalesModule: React.FC = () => {
         }
     }, [docSeries, docType, transactions]);
 
-    const handleConsultRuc = async () => {
-        if(!clientDoc) return;
-        setLoadingRuc(true);
-        try {
-            if (docType === 'BOLETA' && clientDoc.length === 8) {
-                setCustomerNote(null);
-                try {
-                    const seller = await BackendService.getSeller(clientDoc);
-                    if (seller?.full_name) {
-                        setClientName(String(seller.full_name).toUpperCase());
-                    }
-                    if ((seller?.note || '').trim()) {
-                        setCustomerNote({
-                            id: String(seller.id),
-                            docNumber: seller.doc_number || clientDoc,
-                            fullName: seller.full_name || '',
-                            phone: seller.phone || '',
-                            address: seller.address || '',
-                            note: seller.note || '',
-                        });
-                    }
-                } catch {}
-                const info = await fetchDni(clientDoc);
-                setClientName(prev => (info.fullName || prev || '').toUpperCase());
-            } else if (docType === 'FACTURA' && clientDoc.length === 11) {
-                setCustomerNote(null);
-                const info = await fetchRuc(clientDoc);
-                setClientName((info.razonSocial || info.nombreComercial || '').toUpperCase());
-            } else {
-                showAlert('Documento inválido', 'error');
-            }
-        } catch {
-            showAlert('No se pudo consultar los datos del documento', 'error');
-        } finally {
-            setLoadingRuc(false);
-        }
-    };
+
 
     const handleDeleteCustomerNote = async () => {
         if (!customerNote?.id) return;
@@ -247,7 +258,7 @@ export const SalesModule: React.FC = () => {
              };
         });
 
-        const totalBaseAmount = transactionItems.reduce((acc, item) => acc + item.totalBase, 0);
+const totalBaseAmount = transactionItems.reduce((acc, item) => acc + item.totalBase, 0);
         const totalIgvAmount = config.isIgvExempt ? 0 : (totalBaseAmount * config.igvRate);
         const totalFinalAmount = totalBaseAmount + totalIgvAmount;
 
@@ -259,6 +270,7 @@ export const SalesModule: React.FC = () => {
                 documentNumber: saleInvoiceNumber,
                 entityName: clientName,
                 entityDocNumber: clientDoc,
+                entityAddress: clientAddress,
                 baseAmount: totalBaseAmount,
                 igvAmount: totalIgvAmount,
                 totalAmount: totalFinalAmount,
@@ -283,6 +295,7 @@ export const SalesModule: React.FC = () => {
                 documentNumber: saleInvoiceNumber,
                 entityName: clientName,
                 entityDocNumber: clientDoc,
+                entityAddress: clientAddress,
                 baseAmount: totalBaseAmount,
                 igvAmount: totalIgvAmount,
                 totalAmount: totalFinalAmount,
@@ -298,6 +311,7 @@ export const SalesModule: React.FC = () => {
             setCart([]);
             setClientDoc('');
             setClientName('');
+            setClientAddress('');
             setCustomerNote(null);
             loadStock();
         }
@@ -321,13 +335,13 @@ export const SalesModule: React.FC = () => {
                         <h3 className="font-black text-slate-800 uppercase text-sm tracking-widest">Datos del Cliente</h3>
                         <div className="flex bg-gray-200 p-1 rounded-lg">
                             <button 
-                                onClick={() => { setDocType('BOLETA'); setClientDoc(''); setClientName(''); setCustomerNote(null); }}
+                                onClick={() => { setDocType('BOLETA'); setClientDoc(''); setClientName(''); setClientAddress(''); setCustomerNote(null); }}
                                 className={`px-4 py-1 text-sm rounded-md font-black transition-all ${docType === 'BOLETA' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
                             >
                                 Boleta
                             </button>
                             <button 
-                                onClick={() => { setDocType('FACTURA'); setClientDoc(''); setClientName(''); setCustomerNote(null); }}
+                                onClick={() => { setDocType('FACTURA'); setClientDoc(''); setClientName(''); setClientAddress(''); setCustomerNote(null); }}
                                 className={`px-4 py-1 text-sm rounded-md font-black transition-all ${docType === 'FACTURA' ? 'bg-purple-700 shadow text-white' : 'text-slate-500'}`}
                             >
                                 Factura
@@ -366,11 +380,25 @@ export const SalesModule: React.FC = () => {
                             <input 
                                 type="text" 
                                 value={clientName}
-                                readOnly
+                                onChange={(e) => setClientName(e.target.value.toUpperCase())}
                                 className="w-full bg-slate-50 border-2 border-gray-200 rounded-lg p-2.5 text-slate-900 font-black uppercase text-sm"
                                 placeholder="Auto-completado..."
                             />
                         </div>
+                    </div>
+
+                    <div className="mt-4">
+                        <label className="block text-[10px] font-black text-slate-600 uppercase mb-1 flex items-center justify-between">
+                            <span>Dirección Fiscal / Domicilio del Cliente</span>
+                            {clientAddress && <span className="text-purple-600 font-extrabold text-[9px] uppercase bg-purple-50 px-2 py-0.5 rounded border border-purple-200">Autocompletado SUNAT / RENIEC</span>}
+                        </label>
+                        <input 
+                            type="text" 
+                            value={clientAddress}
+                            onChange={(e) => setClientAddress(e.target.value.toUpperCase())}
+                            className="w-full bg-white border-2 border-gray-200 rounded-lg p-2.5 text-slate-900 font-bold uppercase text-xs focus:border-purple-500 shadow-inner"
+                            placeholder="Dirección del cliente (Auto-completado / Editable)..."
+                        />
                     </div>
 
                     <div className="mt-6 grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 shadow-inner">
@@ -381,7 +409,7 @@ export const SalesModule: React.FC = () => {
                                 value={docSeries}
                                 onChange={(e) => setDocSeries(e.target.value.toUpperCase())}
                                 className="w-full border-2 border-gray-200 rounded-xl p-3 font-black focus:border-purple-500 bg-white text-slate-900 uppercase text-sm"
-                                placeholder="F001"
+                                placeholder="FF01"
                             />
                         </div>
                         <div>

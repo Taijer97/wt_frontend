@@ -4,6 +4,7 @@ import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
 import { Employee, PensionSystem } from '../types';
 import { Users, FileText, Printer, X, TrendingDown, Landmark, UserCheck, PieChart as PieIcon, Info, Briefcase, Building2, Download } from 'lucide-react';
+import { useAlert } from './ui/Alert';
 
 const numberToWords = (num: number): string => {
     const whole = Math.floor(num);
@@ -35,6 +36,7 @@ interface PayrollDetail {
 }
 
 export const PayrollModule: React.FC = () => {
+  const toast = useAlert();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedPayslip, setSelectedPayslip] = useState<{emp: Employee, detail: PayrollDetail} | null>(null);
   const config = DataService.getConfig();
@@ -245,7 +247,7 @@ export const PayrollModule: React.FC = () => {
                                   jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
                                 }).from(node).save();
                               } catch {
-                                alert('No se pudo generar PDF automático. Use Imprimir → Guardar como PDF.');
+                                toast.warning('No se pudo generar PDF automático. Use Imprimir → Guardar como PDF.');
                               }
                             }}
                             className="bg-white text-slate-900 hover:bg-blue-400 hover:text-slate-900 px-4 md:px-8 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 md:gap-3 transition-all active:scale-95"

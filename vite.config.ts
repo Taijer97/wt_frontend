@@ -26,13 +26,12 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        allowedHosts: ['localhost', '127.0.0.1', '100.116.47.110', 'b839-143-105-157-235.ngrok-free.app'],
+        allowedHosts: ['localhost', '127.0.0.1', '100.116.47.110', '7f83-2803-9810-6030-c310-1463-3a0e-2231-2a72.ngrok-free.app'],
         proxy
       },
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },
       resolve: {
         alias: {

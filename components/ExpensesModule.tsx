@@ -4,8 +4,10 @@ import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
 import { ExpenseEntry, ExpenseCategory, ExpenseStatus, PaymentMethod, ReceiptType } from '../types';
 import { Plus, Receipt, AlertCircle, CheckCircle, CreditCard, Filter, Trash2, Upload, FileText, X, DollarSign, Calendar, Users, Info, Paperclip, Save, Pencil, ArrowRight, Eye, Download } from 'lucide-react';
+import { useAlert } from './ui/Alert';
 
 export const ExpensesModule: React.FC = () => {
+  const toast = useAlert();
   const [activeTab, setActiveTab] = useState<'register' | 'pending' | 'history'>('register');
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
   const [sustentoFile, setSustentoFile] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export const ExpensesModule: React.FC = () => {
         paymentMethod: PaymentMethod.TRANSFERENCIA, status: ExpenseStatus.PENDING_DOCS,
         amount: 0, description: '', beneficiary: ''
     });
-    alert('Gasto registrado. Por favor, cargue el sustento en la pestaña de Pendientes.');
+    toast.success('Gasto registrado. Por favor, cargue el sustento en la pestaña de Pendientes.');
     setActiveTab('pending');
   };
 
@@ -77,7 +79,7 @@ export const ExpensesModule: React.FC = () => {
       } catch {
         await BackendService.updateExpense(sustentandoItem.id, { status: 'COMPLETED', pdfUrl: sustentoFile });
       }
-      alert('Gasto sustentado correctamente para auditoría.');
+      toast.success('Gasto sustentado correctamente para auditoría.');
       setSustentandoItem(null); setSustentoFile(null); setSustentoObj(null); await loadExpenses();
       setActiveTab('history');
   };
