@@ -163,6 +163,11 @@ export const PurchaseModule: React.FC = () => {
     return BackendService.getPurchaseBlocks({ type: 'RUC10', status: 'PENDING_DOCS', op_date: opDate }, force);
   };
 
+  const getHistoryBlocks = async (opDate?: string, force = false) => {
+    return BackendService.getPurchaseBlocks({ type: 'RUC10', status: 'COMPLETED', op_date: opDate }, force);
+  };
+
+
   const handleDelete = (id: string) => {
     BackendService.deletePurchase(id)
       .then(async (result) => {
@@ -242,7 +247,7 @@ export const PurchaseModule: React.FC = () => {
         {activeTab === 'history' && (
           <HistoryPurchasesTable
             fetchPage={(args) => fetchPurchasePage({ ...args, status: 'COMPLETED' })}
-            getBlocks={getPendingBlocks}
+            getBlocks={getHistoryBlocks}
             refreshKey={historyRefreshKey}
             onViewSupport={setViewingPurchase}
             onEdit={setEditingPurchase}

@@ -228,18 +228,24 @@ export const InventoryTransferModule: React.FC = () => {
         }
     }, [docSeries, transactions]);
 
-    const ruc10Products = useMemo(() => products.filter(p => 
-        p.status === ProductStatus.IN_STOCK_RUC10 && 
-        (p.brand?.toUpperCase().includes(searchTerm) || 
-         p.model?.toUpperCase().includes(searchTerm) || 
-         p.serialNumber?.toUpperCase().includes(searchTerm))
-    ), [products, searchTerm]);
-    const ruc20Products = useMemo(() => products.filter(p => 
-        p.status === ProductStatus.TRANSFERRED_RUC20 && 
-        (p.brand?.toUpperCase().includes(searchTerm) || 
-         p.model?.toUpperCase().includes(searchTerm) || 
-         p.serialNumber?.toUpperCase().includes(searchTerm))
-    ), [products, searchTerm]);
+    const ruc10Products = useMemo(() => {
+        const term = searchTerm.toUpperCase();
+        return products.filter(p => 
+            p.status === ProductStatus.IN_STOCK_RUC10 && 
+            (p.brand?.toUpperCase().includes(term) || 
+             p.model?.toUpperCase().includes(term) || 
+             p.serialNumber?.toUpperCase().includes(term))
+        );
+    }, [products, searchTerm]);
+    const ruc20Products = useMemo(() => {
+        const term = searchTerm.toUpperCase();
+        return products.filter(p => 
+            p.status === ProductStatus.TRANSFERRED_RUC20 && 
+            (p.brand?.toUpperCase().includes(term) || 
+             p.model?.toUpperCase().includes(term) || 
+             p.serialNumber?.toUpperCase().includes(term))
+        );
+    }, [products, searchTerm]);
 
     const selectedTransferProducts = useMemo(() => products.filter(
         p => selectedProductIds.includes(p.id) && p.status === ProductStatus.IN_STOCK_RUC10
