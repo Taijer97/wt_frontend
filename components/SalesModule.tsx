@@ -110,6 +110,15 @@ export const SalesModule: React.FC = () => {
             ]);
         };
         setTimeout(bgUpdate, 100);
+
+        const handleRealtime = () => bgUpdate();
+        window.addEventListener('wasitech_transaction_change', handleRealtime);
+        window.addEventListener('wasitech_product_change', handleRealtime);
+
+        return () => {
+            window.removeEventListener('wasitech_transaction_change', handleRealtime);
+            window.removeEventListener('wasitech_product_change', handleRealtime);
+        };
     }, []);
 
     const loadStock = async (forceRefresh = false) => {

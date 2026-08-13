@@ -42,15 +42,19 @@ export const PayrollModule: React.FC = () => {
   const config = DataService.getConfig();
 
   useEffect(() => {
-    const load = async () => {
+    const load = async (force = false) => {
       try {
-        const emps = await BackendService.getEmployees();
+        const emps = await BackendService.getEmployees(force);
         setEmployees(emps);
       } catch {
         setEmployees(DataService.getEmployees());
       }
     };
     load();
+
+    const handleRealtime = () => load(true);
+    window.addEventListener('wasitech_employee_change', handleRealtime);
+    return () => window.removeEventListener('wasitech_employee_change', handleRealtime);
   }, []);
 
   const calculatePayroll = (emp: Employee): PayrollDetail => {

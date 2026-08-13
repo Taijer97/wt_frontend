@@ -19,6 +19,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { Button, Modal, DataTable, Column, Badge } from '../ui';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 const WhatsappIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -39,7 +40,7 @@ interface PendingPurchasesTableProps {
   refreshKey: number;
   onUpdate: () => void;
   onPreview: (p: { url: string; kind: 'contract' | 'dj'; title: string; purchaseId: string }) => void;
-  showAlert: (m: string, t: 'success' | 'error') => void;
+  showAlert: (m: string, t: 'success' | 'error' | 'info' | 'warning') => void;
   onEdit: (p: PurchaseEntry) => void;
   onDelete: (id: string) => void;
   canDelete: boolean;
@@ -68,6 +69,8 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
   const [files, setFiles] = useState({ v: null as string | null, c: null as string | null, d: null as string | null });
   const [rawFiles, setRawFiles] = useState<{ v: File | null; c: File | null; d: File | null }>({ v: null, c: null, d: null });
   const [loading, setLoading] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBlock, setFilterBlock] = useState('');
@@ -137,7 +140,7 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
         category: selected.productType || '',
         brand: selected.productBrand || '',
         model: selected.productModel || '',
-        serialNumber: selected.productSerial || '',
+        serialNumber: selected.productSerial || selected.documentNumber || '',
         idType: (selected.productIdType as any) || 'SERIE',
         condition: (selected.productCondition as any) || 'USADO',
         status: 'IN_STOCK_RUC10' as any,
@@ -149,7 +152,10 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
         stock: 1,
       });
 
-      await BackendService.updatePurchase(selected.id, { status: 'COMPLETED' });
+      await BackendService.updatePurchase(selected.id, {
+        status: 'COMPLETED',
+        intermediaryId: selected.intermediaryId || null
+      });
 
       const finalVoucher = resV?.filename || selected.voucherUrl;
       const finalContract = resC?.filename || selected.contractUrl;
@@ -171,6 +177,8 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
       setFiles({ v: null, c: null, d: null });
       setRawFiles({ v: null, c: null, d: null });
       onUpdate();
+      window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
+      window.dispatchEvent(new CustomEvent('wasitech_product_change'));
 
       if (isFullySustained) {
         showAlert('Expediente Sustentado y transferido a Historial', 'success');
@@ -423,7 +431,7 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
         rowActions={(p) => (
           <div className="flex flex-col gap-1 items-end">
             <Button
-              variant="warning"
+              variant="primary"
               size="xs"
               onClick={() => setSelected(p)}
               rightIcon={<ArrowRight className="w-3 h-3" />}
@@ -441,7 +449,8 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
                   variant="ghost"
                   size="xs"
                   onClick={() => {
-                    if (confirm('¿Eliminar compra pendiente?')) onDelete(p.id);
+                    setConfirmDeleteId(p.id);
+                    setConfirmDeleteOpen(true);
                   }}
                 >
                   <Trash2 className="w-3.5 h-3.5 text-red-600" />
@@ -499,6 +508,21 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
           </form>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => { setConfirmDeleteOpen(false); setConfirmDeleteId(null); }}
+        onConfirm={() => {
+          if (confirmDeleteId) onDelete(confirmDeleteId);
+          setConfirmDeleteOpen(false);
+          setConfirmDeleteId(null);
+        }}
+        title="¿Eliminar compra pendiente?"
+        message="Esta compra será eliminada permanentemente del sistema."
+        confirmText="Sí, eliminar"
+        cancelText="Cancelar"
+        variant="danger"
+      />
     </div>
   );
 };

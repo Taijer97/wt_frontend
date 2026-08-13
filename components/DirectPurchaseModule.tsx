@@ -77,7 +77,17 @@ export const DirectPurchaseModule: React.FC = () => {
     const canDelete = DataService.checkPermission('purchases_ruc20', 'delete');
     const effectiveIgvRate = config.isIgvExempt ? 0 : 0.18;
 
-    useEffect(() => { loadData(); }, [activeTab]);
+    useEffect(() => { loadData(false); }, [activeTab]);
+
+    useEffect(() => {
+        const handleRealtime = () => loadData(true);
+        window.addEventListener('wasitech_purchase_change', handleRealtime);
+        window.addEventListener('wasitech_supplier_change', handleRealtime);
+        return () => {
+            window.removeEventListener('wasitech_purchase_change', handleRealtime);
+            window.removeEventListener('wasitech_supplier_change', handleRealtime);
+        };
+    }, []);
 
     const loadData = async (force = false) => {
         if (wholesalePurchases.length === 0 || force) {

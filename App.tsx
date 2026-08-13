@@ -19,7 +19,7 @@ import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { FileText, Loader2 } from 'lucide-react';
 import { DataService } from './services/dataService';
-import { BackendService } from './services/backendService';
+import { BackendService, clearCache } from './services/backendService';
 import { Employee } from './types';
 
 const App: React.FC = () => {
@@ -97,19 +97,18 @@ const App: React.FC = () => {
     let inactivityTimeout: NodeJS.Timeout;
 
     const connect = () => {
+      if (!currentUser) return;
+
       const isDev = !!(import.meta as any).env?.DEV;
       const configuredBase = String((import.meta as any).env?.VITE_API_BASE_URL || '').trim();
       const base = configuredBase || 'http://localhost:8001';
       
-      // Determine correct protocol for WebSockets (ws or wss) based on the connection protocol (http or https)
       let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
-      // Construir la URL del WS dependiendo de si es dev o prod
       let wsUrl = '';
       if (isDev && !configuredBase) {
          wsUrl = `${wsProtocol}//${window.location.host}/ws/updates`;
       } else {
-         // Si la base es https://, usar wss://
          const cleanBase = base.replace(/^https?:\/\//, '');
          const apiProtocol = base.startsWith('https') ? 'wss:' : 'ws:';
          wsUrl = `${apiProtocol}//${cleanBase}/ws/updates`;
@@ -120,7 +119,6 @@ const App: React.FC = () => {
 
       ws.onopen = () => {
         console.log('WS conectado');
-        // Iniciar latido (heartbeat) cada 30 segundos para mantener la conexión viva
         heartbeatInterval = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) {
             ws.send('ping');
@@ -129,11 +127,41 @@ const App: React.FC = () => {
       };
 
       ws.onmessage = (ev) => {
-        if (ev.data === 'pong') return; // Ignorar respuestas de latido
-        console.log('WS mensaje:', ev.data);
-        setWsMsg(String(ev.data));
-        setTimeout(() => setWsMsg(null), 5000);
-        resetInactivityTimeout(); // Resetear inactividad al recibir mensajes relevantes
+        if (ev.data === 'pong') return;
+        
+        // Asumimos que resetInactivityTimeout existe en el scope exterior
+        if (typeof resetInactivityTimeout === 'function') resetInactivityTimeout();
+
+        const msg = String(ev.data || '');
+
+        // Traducir mensaje técnico a texto amigable
+        const friendlyMsg = (raw: string): string | null => {
+          if (raw.startsWith('product.created')) return '📦 Nuevo producto registrado en inventario';
+          if (raw.startsWith('product.updated')) return '📦 Producto actualizado en inventario';
+          if (raw.startsWith('product.deleted')) return '🗑️ Producto eliminado del inventario';
+          if (raw.startsWith('purchase.created')) return '🛒 Nueva compra registrada';
+          if (raw.startsWith('purchase.updated')) return '📝 Compra actualizada';
+          if (raw.startsWith('purchase.deleted')) return '🗑️ Compra eliminada';
+          if (raw.startsWith('transaction.created')) return '💰 Nueva venta registrada';
+          if (raw.startsWith('transaction.updated')) return '📝 Venta actualizada';
+          if (raw.startsWith('transaction.deleted')) return '🗑️ Venta eliminada';
+          return null;
+        };
+
+        const friendly = friendlyMsg(msg);
+        if (friendly) {
+          console.log('📡 Sincronización:', friendly);
+          setWsMsg(friendly);
+          setTimeout(() => setWsMsg(null), 3000);
+
+          clearCache('products');
+          clearCache('purchases');
+          clearCache('transactions');
+
+          window.dispatchEvent(new CustomEvent('wasitech_product_change', { detail: msg }));
+          window.dispatchEvent(new CustomEvent('wasitech_purchase_change', { detail: msg }));
+          window.dispatchEvent(new CustomEvent('wasitech_transaction_change', { detail: msg }));
+        }
       };
 
       ws.onerror = (e) => {

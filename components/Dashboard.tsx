@@ -510,7 +510,7 @@ export const Dashboard: React.FC<WelcomeDashboardProps> = ({ currentUser, onNavi
             </div>
 
             <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={weeklyTrendData}>
                   <defs>
                     <linearGradient id="colorSalesWeekly" x1="0" y1="0" x2="0" y2="1">

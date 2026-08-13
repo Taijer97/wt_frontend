@@ -33,6 +33,12 @@ export const CustomersModule: React.FC = () => {
 
   useEffect(() => {
     loadCustomers();
+
+    const handleRealtime = () => {
+      loadCustomers(true);
+    };
+    window.addEventListener('wasitech_customer_change', handleRealtime);
+    return () => window.removeEventListener('wasitech_customer_change', handleRealtime);
   }, []);
 
   const openEditor = (customer: CustomerRecord) => {

@@ -20,19 +20,30 @@ export const DataUpdateModule: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
 
     useEffect(() => {
-        loadData();
+        loadData(false);
+
+        const handleRealtime = () => {
+            loadData(true);
+        };
+        const events = [
+            'wasitech_product_change', 'wasitech_purchase_change', 
+            'wasitech_supplier_change', 'wasitech_intermediary_change', 
+            'wasitech_employee_change'
+        ];
+        events.forEach(e => window.addEventListener(e, handleRealtime));
+        return () => events.forEach(e => window.removeEventListener(e, handleRealtime));
     }, []);
 
-    const loadData = async () => {
-        setIsLoading(true);
+    const loadData = async (forceRefresh = false) => {
+        if (!forceRefresh) setIsLoading(true);
         try {
             const [prods, p10, p20, supps, inters, emps] = await Promise.all([
-                BackendService.getProducts(),
-                BackendService.getPurchases({ type: 'RUC10', limit: 1000 }),
-                BackendService.getPurchases({ type: 'RUC20', limit: 1000 }),
-                BackendService.getSuppliers(),
-                BackendService.getIntermediaries(),
-                BackendService.getEmployees()
+                BackendService.getProducts(forceRefresh),
+                BackendService.getPurchases({ type: 'RUC10', limit: 1000 }, forceRefresh),
+                BackendService.getPurchases({ type: 'RUC20', limit: 1000 }, forceRefresh),
+                BackendService.getSuppliers(forceRefresh),
+                BackendService.getIntermediaries(forceRefresh),
+                BackendService.getEmployees(forceRefresh)
             ]);
             setProducts(prods);
             

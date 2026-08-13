@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { PurchaseEntry } from '../../types';
-import { Search, Eye, Edit3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Eye, Edit3, Trash2, ChevronLeft, ChevronRight, Undo2 } from 'lucide-react';
 import { Button, DataTable, Column, Badge } from '../ui';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface HistoryPurchasesTableProps {
   fetchPage: (args: {
@@ -43,6 +44,9 @@ export const HistoryPurchasesTable: React.FC<HistoryPurchasesTableProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBlock, setFilterBlock] = useState('');
   const [filterDate, setFilterDate] = useState('');
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,17 +276,31 @@ export const HistoryPurchasesTable: React.FC<HistoryPurchasesTableProps> = ({
                 variant="ghost"
                 size="xs"
                 onClick={() => {
-                  if (confirm('¿Quitar esta compra del Historial y devolverla a Pendientes?')) {
-                    onDelete(item.id);
-                  }
+                  setConfirmId(item.id);
+                  setConfirmOpen(true);
                 }}
                 title="Devolver a Pendientes"
               >
-                <Trash2 className="w-4 h-4 text-red-600" />
+                <Undo2 className="w-4 h-4 text-amber-600" />
               </Button>
             )}
           </div>
         )}
+      />
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => { setConfirmOpen(false); setConfirmId(null); }}
+        onConfirm={() => {
+          if (confirmId) onDelete(confirmId);
+          setConfirmOpen(false);
+          setConfirmId(null);
+        }}
+        title="¿Devolver a Pendientes?"
+        message="Este expediente será removido del Historial y volverá a la pestaña de Pendientes para ser sustentado nuevamente."
+        confirmText="Sí, devolver"
+        cancelText="Cancelar"
+        variant="warning"
       />
     </div>
   );

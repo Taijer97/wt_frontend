@@ -102,6 +102,12 @@ export const SalesHistoryModule: React.FC = () => {
 
   useEffect(() => {
     refresh();
+
+    const handleRealtime = () => {
+      refresh(true);
+    };
+    window.addEventListener('wasitech_transaction_change', handleRealtime);
+    return () => window.removeEventListener('wasitech_transaction_change', handleRealtime);
   }, []);
 
   const refresh = async (force = false) => {

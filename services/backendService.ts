@@ -31,7 +31,7 @@ const getCached = async <T>(key: string, fetcher: () => Promise<T>, forceRefresh
   return data;
 };
 
-const clearCache = (keyPattern: string) => {
+export const clearCache = (keyPattern: string) => {
   Object.keys(localStorage).forEach(k => {
     if (k.startsWith(CACHE_PREFIX) && k.includes(keyPattern)) {
       localStorage.removeItem(k);
@@ -49,6 +49,7 @@ const cacheKeyFromParams = (prefix: string, params: Record<string, any>) => {
 };
 
 export const BackendService = {
+  clearCache,
   _statusFromBackend(s?: string) {
     if (!s) return undefined as any;
     if (s === 'IN_STOCK_RUC10') return 'EN_STOCK_PERSONA' as any;
@@ -170,7 +171,10 @@ export const BackendService = {
       transfer_doc_number: payload.transferDocNumber,
       transfer_date: payload.transferDate,
     });
-    clearCache('products'); // Invalidate products cache
+    clearCache('products');
+    clearCache('purchases');
+    window.dispatchEvent(new CustomEvent('wasitech_product_change'));
+    window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
     const p = res.data;
     return {
       id: String(p.id),
@@ -252,6 +256,7 @@ export const BackendService = {
     if (payload.address) body.address = payload.address;
     const res = await api.post('/employees', body);
     clearCache('employees');
+    window.dispatchEvent(new CustomEvent('wasitech_employee_change'));
     const e = res.data;
     return {
       id: String(e.id),
@@ -283,6 +288,7 @@ export const BackendService = {
     };
     const res = await api.put(`/employees/${id}`, body);
     clearCache('employees');
+    window.dispatchEvent(new CustomEvent('wasitech_employee_change'));
     const e = res.data;
     return {
       id: String(e.id),
@@ -310,6 +316,7 @@ export const BackendService = {
   async deleteEmployee(id: string) {
     const res = await api.delete(`/employees/${id}`);
     clearCache('employees');
+    window.dispatchEvent(new CustomEvent('wasitech_employee_change'));
     return res.data;
   },
 
@@ -363,7 +370,10 @@ export const BackendService = {
 
   async deleteProduct(id: string) {
     const res = await api.delete(`/products/${id}`);
-    clearCache('products'); // Invalidate products cache
+    clearCache('products');
+    clearCache('purchases');
+    window.dispatchEvent(new CustomEvent('wasitech_product_change'));
+    window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
     return res.data;
   },
 
@@ -399,7 +409,8 @@ export const BackendService = {
         total_base: i.totalBase,
       })),
     });
-    clearCache('transactions'); // Invalidate transactions cache
+    clearCache('transactions');
+    window.dispatchEvent(new CustomEvent('wasitech_transaction_change')); // Invalidate transactions cache
     return res.data;
   },
 
@@ -528,33 +539,40 @@ export const BackendService = {
     bankAccount: string | null;
     baseAmount: number | null;
     totalAmount: number | null;
-    intermediaryId: string | null;
+    intermediaryId: string | number | null;
     date: string | null;
     blockNumber: number | null;
     items: { category?: string; brand?: string; model?: string; serial?: string; specs?: string; cost?: number; supplierId?: string | number | null }[] | null;
   }>) {
-    const res = await api.put(`/purchases/${id}`, {
-      status: payload.status,
-      pdf_url: payload.pdfUrl,
-      provider_name: payload.providerName,
-      supplier_id: payload.supplierId !== undefined ? (payload.supplierId ? Number(payload.supplierId) : null) : undefined,
-      product_brand: payload.productBrand,
-      product_model: payload.productModel,
-      product_serial: payload.productSerial,
-      product_id_type: payload.productIdType,
-      product_condition: payload.productCondition,
-      seller_doc_number: payload.sellerDocNumber,
-      seller_full_name: payload.sellerFullName,
-      seller_phone: payload.sellerPhone,
-      seller_address: payload.sellerAddress,
-      bank_name: payload.bankName,
-      bank_account: payload.bankAccount,
-      base_amount: payload.baseAmount,
-      total_amount: payload.totalAmount,
-      intermediary_id: payload.intermediaryId ? Number(payload.intermediaryId) : null,
-      date: payload.date,
-      block_number: payload.blockNumber,
-      items: payload.items?.map(it => ({
+    const body: any = {};
+    if (payload.status !== undefined) body.status = payload.status;
+    if (payload.pdfUrl !== undefined) body.pdf_url = payload.pdfUrl;
+    if (payload.providerName !== undefined) body.provider_name = payload.providerName;
+    if (payload.supplierId !== undefined) {
+      const num = Number(payload.supplierId);
+      body.supplier_id = num > 0 ? num : null;
+    }
+    if (payload.productBrand !== undefined) body.product_brand = payload.productBrand;
+    if (payload.productModel !== undefined) body.product_model = payload.productModel;
+    if (payload.productSerial !== undefined) body.product_serial = payload.productSerial;
+    if (payload.productIdType !== undefined) body.product_id_type = payload.productIdType;
+    if (payload.productCondition !== undefined) body.product_condition = payload.productCondition;
+    if (payload.sellerDocNumber !== undefined) body.seller_doc_number = payload.sellerDocNumber;
+    if (payload.sellerFullName !== undefined) body.seller_full_name = payload.sellerFullName;
+    if (payload.sellerPhone !== undefined) body.seller_phone = payload.sellerPhone;
+    if (payload.sellerAddress !== undefined) body.seller_address = payload.sellerAddress;
+    if (payload.bankName !== undefined) body.bank_name = payload.bankName;
+    if (payload.bankAccount !== undefined) body.bank_account = payload.bankAccount;
+    if (payload.baseAmount !== undefined) body.base_amount = payload.baseAmount;
+    if (payload.totalAmount !== undefined) body.total_amount = payload.totalAmount;
+    if (payload.intermediaryId !== undefined) {
+      const num = Number(payload.intermediaryId);
+      body.intermediary_id = num > 0 ? num : null;
+    }
+    if (payload.date !== undefined) body.date = payload.date;
+    if (payload.blockNumber !== undefined) body.block_number = payload.blockNumber;
+    if (payload.items !== undefined && payload.items !== null) {
+      body.items = payload.items.map(it => ({
         category: it.category,
         brand: it.brand,
         model: it.model,
@@ -562,9 +580,13 @@ export const BackendService = {
         specs: it.specs,
         cost: it.cost,
         supplier_id: it.supplierId ? Number(it.supplierId) : null,
-      })),
-    });
+      }));
+    }
+    const res = await api.put(`/purchases/${id}`, body);
     clearCache('purchases');
+    clearCache('products');
+    window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
+    window.dispatchEvent(new CustomEvent('wasitech_product_change'));
     return res.data;
   },
   async generatePurchaseDoc(id: string, docKind: 'contract' | 'dj') {
@@ -574,6 +596,9 @@ export const BackendService = {
   async deletePurchase(id: string) {
     const res = await api.delete(`/purchases/${id}`);
     clearCache('purchases');
+    clearCache('products');
+    window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
+    window.dispatchEvent(new CustomEvent('wasitech_product_change'));
     return res.data;
   },
   async uploadPurchaseFile(id: string, file: File, docKind?: 'voucher' | 'contract' | 'dj' | 'general') {
@@ -647,17 +672,20 @@ export const BackendService = {
   async createSupplier(payload: { name: string; short_name?: string; ruc: string; contact?: string }) {
     const res = await api.post('/suppliers', payload);
     clearCache('suppliers');
+    window.dispatchEvent(new CustomEvent('wasitech_supplier_change'));
     return res.data;
   },
   async updateSupplier(id: string, payload: { name?: string; short_name?: string; contact?: string; category?: string; department?: string; province?: string; district?: string; address?: string; phone?: string }) {
     const res = await api.put(`/suppliers/${id}`, payload);
     clearCache('suppliers');
+    window.dispatchEvent(new CustomEvent('wasitech_supplier_change'));
     return res.data;
   },
 
   async deleteSupplier(id: string) {
     const res = await api.delete(`/suppliers/${id}`);
     clearCache('suppliers');
+    window.dispatchEvent(new CustomEvent('wasitech_supplier_change'));
     return res.data;
   },
 
@@ -691,17 +719,20 @@ export const BackendService = {
   async createIntermediary(payload: { doc_number: string; name: string; ruc_number?: string; phone?: string; email?: string; address?: string }) {
     const res = await api.post('/intermediaries', payload);
     clearCache('intermediaries');
+    window.dispatchEvent(new CustomEvent('wasitech_intermediary_change'));
     return res.data;
   },
 
   async deleteIntermediary(id: string) {
     const res = await api.delete(`/intermediaries/${id}`);
     clearCache('intermediaries');
+    window.dispatchEvent(new CustomEvent('wasitech_intermediary_change'));
     return res.data;
   },
   async updateIntermediary(id: string, payload: { name?: string; ruc_number?: string; phone?: string; email?: string; address?: string }) {
     const res = await api.put(`/intermediaries/${id}`, payload);
     clearCache('intermediaries');
+    window.dispatchEvent(new CustomEvent('wasitech_intermediary_change'));
     return res.data;
   },
   async getTransactions(trxType?: 'sale' | 'purchase' | 'transfer', forceRefresh = false) {
@@ -744,6 +775,7 @@ export const BackendService = {
 
   clearTransactionsCache() {
     clearCache('transactions');
+    window.dispatchEvent(new CustomEvent('wasitech_transaction_change'));
   },
 
   clearProductsCache() {
@@ -771,6 +803,7 @@ export const BackendService = {
   async deleteTransaction(id: string) {
     const res = await api.delete(`/transactions/${id}`);
     clearCache('transactions');
+    window.dispatchEvent(new CustomEvent('wasitech_transaction_change'));
     clearCache('products');
     return res.data;
   },
@@ -798,6 +831,7 @@ export const BackendService = {
   async createExpense(payload: { description: string; amount: number; date: string; status: 'PENDING' | 'COMPLETED' }) {
     const res = await api.post('/expenses', payload);
     clearCache('expenses');
+    window.dispatchEvent(new CustomEvent('wasitech_expense_change'));
     return res.data;
   },
 
@@ -807,12 +841,14 @@ export const BackendService = {
       pdf_url: payload.pdfUrl,
     });
     clearCache('expenses');
+    window.dispatchEvent(new CustomEvent('wasitech_expense_change'));
     return res.data;
   },
 
   async deleteExpense(id: string) {
     const res = await api.delete(`/expenses/${id}`);
     clearCache('expenses');
+    window.dispatchEvent(new CustomEvent('wasitech_expense_change'));
     return res.data;
   },
 
@@ -827,6 +863,7 @@ export const BackendService = {
       headers: { 'ngrok-skip-browser-warning': 'true' }
     });
     clearCache('expenses');
+    window.dispatchEvent(new CustomEvent('wasitech_expense_change'));
     return res.data as { url: string; filename: string };
   },
 
@@ -865,6 +902,7 @@ export const BackendService = {
       note: payload.note ?? null,
     });
     clearCache('customers');
+    window.dispatchEvent(new CustomEvent('wasitech_customer_change'));
     return {
       id: String(res.data.id),
       docNumber: res.data.doc_number,

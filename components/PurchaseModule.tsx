@@ -32,6 +32,20 @@ export const PurchaseModule: React.FC = () => {
   useEffect(() => {
     loadIntermediaries();
     refreshCounts();
+
+    const handleRealtime = () => {
+      setPendingRefreshKey((k) => k + 1);
+      setHistoryRefreshKey((k) => k + 1);
+      refreshCounts(true);
+    };
+
+    window.addEventListener('wasitech_purchase_change', handleRealtime);
+    window.addEventListener('wasitech_product_change', handleRealtime);
+
+    return () => {
+      window.removeEventListener('wasitech_purchase_change', handleRealtime);
+      window.removeEventListener('wasitech_product_change', handleRealtime);
+    };
   }, []);
 
   const loadIntermediaries = async () => {
@@ -155,6 +169,8 @@ export const PurchaseModule: React.FC = () => {
         setPendingRefreshKey((k) => k + 1);
         setHistoryRefreshKey((k) => k + 1);
         await refreshCounts(true);
+        window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
+        window.dispatchEvent(new CustomEvent('wasitech_product_change'));
         if (result?.reverted_to_pending) {
           alert.success('La compra salió del historial y volvió a Pendientes');
         } else {
@@ -166,6 +182,8 @@ export const PurchaseModule: React.FC = () => {
         setPendingRefreshKey((k) => k + 1);
         setHistoryRefreshKey((k) => k + 1);
         await refreshCounts(true);
+        window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
+        window.dispatchEvent(new CustomEvent('wasitech_product_change'));
         alert.success('Compra eliminada');
       });
   };

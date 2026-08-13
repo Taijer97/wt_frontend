@@ -31,10 +31,18 @@ export const ExpensesModule: React.FC = () => {
 
   useEffect(() => { loadExpenses(); }, [activeTab]);
 
-  const loadExpenses = async () => {
-    setIsLoadingData(true);
+  useEffect(() => {
+    const handleRealtime = () => {
+      loadExpenses(true);
+    };
+    window.addEventListener('wasitech_expense_change', handleRealtime);
+    return () => window.removeEventListener('wasitech_expense_change', handleRealtime);
+  }, [activeTab]);
+
+  const loadExpenses = async (forceRefresh = false) => {
+    if (!forceRefresh) setIsLoadingData(true);
     try {
-      const list = await BackendService.getExpenses();
+      const list = await BackendService.getExpenses(forceRefresh);
       const employees = DataService.getEmployees();
       const config = DataService.getConfig();
       const payroll = employees.reduce((acc, emp) => acc + ((emp.baseSalary + (emp.hasChildren ? config.rmv * 0.10 : 0)) * 1.09), 0);

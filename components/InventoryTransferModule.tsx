@@ -204,6 +204,18 @@ export const InventoryTransferModule: React.FC = () => {
 
     useEffect(() => {
         loadData(false);
+
+        const handleRealtime = () => {
+            loadData(true);
+        };
+
+        window.addEventListener('wasitech_product_change', handleRealtime);
+        window.addEventListener('wasitech_purchase_change', handleRealtime);
+
+        return () => {
+            window.removeEventListener('wasitech_product_change', handleRealtime);
+            window.removeEventListener('wasitech_purchase_change', handleRealtime);
+        };
     }, []);
 
     useEffect(() => {
@@ -325,7 +337,9 @@ export const InventoryTransferModule: React.FC = () => {
                 setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                 try {
                     await BackendService.deleteProduct(product.id);
-                    loadData();
+                    await loadData(true);
+                    window.dispatchEvent(new CustomEvent('wasitech_product_change'));
+                    window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
                 } catch (error) {
                     console.error("Error deleting product", error);
                     toast.error("Error al eliminar el producto");
