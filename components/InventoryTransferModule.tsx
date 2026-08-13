@@ -94,7 +94,7 @@ export const InventoryTransferModule: React.FC = () => {
     const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
     const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
     const [transferCalc, setTransferCalc] = useState({ base: 0, igv: 0, total: 0 });
-    const [baseOverride, setBaseOverride] = useState<number | null>(null);
+    const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
     const [config, setConfig] = useState<any>(null);
     const [viewingTrx, setViewingTrx] = useState<Transaction | null>(null);
     const [previewingTrx, setPreviewingTrx] = useState<Transaction | null>(null);
@@ -257,21 +257,22 @@ export const InventoryTransferModule: React.FC = () => {
         const rentaRate = config?.rentaRate || 0;
         const profit = marginType === 'PERCENT' ? (totalCost * margin) : margin;
         const divisor = 1 - rentaRate;
-        const base = divisor > 0 ? (totalCost + profit) / divisor : (totalCost + profit);
+        
+        let base = divisor > 0 ? (totalCost + profit) / divisor : (totalCost + profit);
+        if (priceOverrides[product.id] !== undefined) {
+            base = priceOverrides[product.id];
+        }
+
         const igv = base * effectiveIgvRate;
         const total = base + igv;
         return { base, igv, total };
     };
 
-    const effectiveBase = baseOverride !== null ? baseOverride : transferCalc.base;
-    const effectiveIgv = effectiveBase * effectiveIgvRate;
-    const effectiveTotal = effectiveBase + effectiveIgv;
-
     useEffect(() => {
         if (!config) return;
         if (selectedTransferProducts.length === 0) {
             setTransferCalc({ base: 0, igv: 0, total: 0 });
-            setBaseOverride(null);
+            setPriceOverrides({});
             setSelectedIntermediaryId('');
             setVoucherFile(null);
             setVoucherPreview(null);
@@ -293,7 +294,7 @@ export const InventoryTransferModule: React.FC = () => {
         if (!selectedIntermediaryId) {
             setSelectedIntermediaryId(selectedTransferProducts[0].intermediaryId || '');
         }
-    }, [config, effectiveIgvRate, selectedIntermediaryId, selectedTransferProducts]);
+    }, [config, effectiveIgvRate, selectedIntermediaryId, selectedTransferProducts, priceOverrides]);
 
     const handleSelectProduct = (product: Product) => {
         if (activeTab !== 'ruc10') return;
@@ -397,9 +398,9 @@ export const InventoryTransferModule: React.FC = () => {
                 entityName: emitterName,
                 entityDocNumber: emitterDoc,
                 entityAddress: emitterAddr,
-                baseAmount: effectiveBase,
-                igvAmount: effectiveIgv,
-                totalAmount: effectiveTotal,
+                baseAmount: transferCalc.base,
+                igvAmount: transferCalc.igv,
+                totalAmount: transferCalc.total,
                 items: trxItems
             });
 
@@ -1040,48 +1041,68 @@ export const InventoryTransferModule: React.FC = () => {
 
                                         {/* 1. Resumen de Equipos */}
                                         <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
-                                            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center gap-2">
-                                                <Package className="w-3.5 h-3.5 text-slate-500" />
-                                                <span className="text-[10px] font-black text-slate-600 uppercase tracking-wide">Resumen de Costo</span>
-                                            </div>
-                                            <div className="px-4 py-3 space-y-2.5">
-                                                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
-                                                    <span>Subtotal ({selectedTransferProducts.length} prod.)</span>
-                                                    <span className="font-black text-slate-700">S/ {selectedTransferProducts.reduce((acc, p) => acc + (p.totalCost || 0), 0).toFixed(2)}</span>
+                                            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Package className="w-3.5 h-3.5 text-slate-500" />
+                                                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-wide">Productos a Transferir</span>
                                                 </div>
+                                                <span className="text-[10px] font-bold text-slate-500">{selectedTransferProducts.length} items</span>
+                                            </div>
+                                            
+                                            <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+                                                {selectedTransferProducts.map(p => {
+                                                    const calc = calcForProduct(p);
+                                                    return (
+                                                        <div key={p.id} className="p-3 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors">
+                                                            <div>
+                                                                <div className="text-[10px] font-black uppercase text-slate-800 leading-tight">
+                                                                    {p.brand} {p.model}
+                                                                </div>
+                                                                <div className="text-[9px] font-mono text-slate-400 mt-0.5">
+                                                                    {p.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {p.serialNumber}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10px] text-slate-400 font-bold">S/</span>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    min="0"
+                                                                    className="w-20 text-right font-black text-slate-700 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
+                                                                    value={priceOverrides[p.id] !== undefined ? priceOverrides[p.id] : calc.base.toFixed(2)}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setPriceOverrides(prev => {
+                                                                            const next = { ...prev };
+                                                                            if (val === '') {
+                                                                                delete next[p.id];
+                                                                            } else {
+                                                                                next[p.id] = parseFloat(val) || 0;
+                                                                            }
+                                                                            return next;
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="px-4 py-3 space-y-2.5 bg-slate-100 border-t border-slate-200">
                                                 <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase">
                                                     <span>Base Imponible</span>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-slate-400">S/</span>
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            min="0"
-                                                            className="w-24 text-right font-black text-slate-700 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
-                                                            value={baseOverride !== null ? baseOverride : transferCalc.base.toFixed(2)}
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                if (val === '' || val === transferCalc.base.toFixed(2)) {
-                                                                    setBaseOverride(null);
-                                                                } else {
-                                                                    setBaseOverride(parseFloat(val) || 0);
-                                                                }
-                                                            }}
-                                                            onBlur={(e) => {
-                                                                if (e.target.value === '') setBaseOverride(null);
-                                                            }}
-                                                        />
-                                                    </div>
+                                                    <span className="font-black text-slate-700">S/ {transferCalc.base.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex justify-between text-xs font-bold uppercase">
                                                     <span className="text-emerald-700">IGV ({effectiveIgvRate * 100}%)</span>
                                                     <span className={`font-black ${config?.isIgvExempt ? 'text-emerald-600' : 'text-slate-700'}`}>
-                                                        {config?.isIgvExempt ? 'EXONERADO' : 'S/ ' + effectiveIgv.toFixed(2)}
+                                                        {config?.isIgvExempt ? 'EXONERADO' : 'S/ ' + transferCalc.igv.toFixed(2)}
                                                     </span>
                                                 </div>
                                                 <div className="mt-1 pt-2 border-t border-slate-200 flex justify-between items-center">
                                                     <span className="text-[10px] font-black text-slate-500 uppercase">Total Factura</span>
-                                                    <span className="text-xl font-black text-blue-700 tracking-tight">S/ {effectiveTotal.toFixed(2)}</span>
+                                                    <span className="text-xl font-black text-blue-700 tracking-tight">S/ {transferCalc.total.toFixed(2)}</span>
                                                 </div>
                                             </div>
                                         </div>
