@@ -94,6 +94,7 @@ export const InventoryTransferModule: React.FC = () => {
     const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
     const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
     const [transferCalc, setTransferCalc] = useState({ base: 0, igv: 0, total: 0 });
+    const [baseOverride, setBaseOverride] = useState<number | null>(null);
     const [config, setConfig] = useState<any>(null);
     const [viewingTrx, setViewingTrx] = useState<Transaction | null>(null);
     const [previewingTrx, setPreviewingTrx] = useState<Transaction | null>(null);
@@ -262,10 +263,15 @@ export const InventoryTransferModule: React.FC = () => {
         return { base, igv, total };
     };
 
+    const effectiveBase = baseOverride !== null ? baseOverride : transferCalc.base;
+    const effectiveIgv = effectiveBase * effectiveIgvRate;
+    const effectiveTotal = effectiveBase + effectiveIgv;
+
     useEffect(() => {
         if (!config) return;
         if (selectedTransferProducts.length === 0) {
             setTransferCalc({ base: 0, igv: 0, total: 0 });
+            setBaseOverride(null);
             setSelectedIntermediaryId('');
             setVoucherFile(null);
             setVoucherPreview(null);
@@ -391,9 +397,9 @@ export const InventoryTransferModule: React.FC = () => {
                 entityName: emitterName,
                 entityDocNumber: emitterDoc,
                 entityAddress: emitterAddr,
-                baseAmount: transferCalc.base,
-                igvAmount: transferCalc.igv,
-                totalAmount: transferCalc.total,
+                baseAmount: effectiveBase,
+                igvAmount: effectiveIgv,
+                totalAmount: effectiveTotal,
                 items: trxItems
             });
 
@@ -1043,19 +1049,39 @@ export const InventoryTransferModule: React.FC = () => {
                                                     <span>Subtotal ({selectedTransferProducts.length} prod.)</span>
                                                     <span className="font-black text-slate-700">S/ {selectedTransferProducts.reduce((acc, p) => acc + (p.totalCost || 0), 0).toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
+                                                <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase">
                                                     <span>Base Imponible</span>
-                                                    <span className="font-black text-slate-700">S/ {transferCalc.base.toFixed(2)}</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-slate-400">S/</span>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            className="w-24 text-right font-black text-slate-700 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
+                                                            value={baseOverride !== null ? baseOverride : transferCalc.base.toFixed(2)}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                if (val === '' || val === transferCalc.base.toFixed(2)) {
+                                                                    setBaseOverride(null);
+                                                                } else {
+                                                                    setBaseOverride(parseFloat(val) || 0);
+                                                                }
+                                                            }}
+                                                            onBlur={(e) => {
+                                                                if (e.target.value === '') setBaseOverride(null);
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </div>
                                                 <div className="flex justify-between text-xs font-bold uppercase">
                                                     <span className="text-emerald-700">IGV ({effectiveIgvRate * 100}%)</span>
                                                     <span className={`font-black ${config?.isIgvExempt ? 'text-emerald-600' : 'text-slate-700'}`}>
-                                                        {config?.isIgvExempt ? 'EXONERADO' : 'S/ ' + transferCalc.igv.toFixed(2)}
+                                                        {config?.isIgvExempt ? 'EXONERADO' : 'S/ ' + effectiveIgv.toFixed(2)}
                                                     </span>
                                                 </div>
                                                 <div className="mt-1 pt-2 border-t border-slate-200 flex justify-between items-center">
                                                     <span className="text-[10px] font-black text-slate-500 uppercase">Total Factura</span>
-                                                    <span className="text-xl font-black text-blue-700 tracking-tight">S/ {transferCalc.total.toFixed(2)}</span>
+                                                    <span className="text-xl font-black text-blue-700 tracking-tight">S/ {effectiveTotal.toFixed(2)}</span>
                                                 </div>
                                             </div>
                                         </div>
