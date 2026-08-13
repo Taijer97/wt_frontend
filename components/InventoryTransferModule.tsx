@@ -939,6 +939,7 @@ export const InventoryTransferModule: React.FC = () => {
                                                 {activeTab === 'ruc10' && <th className="px-4 py-3 w-10"></th>}
                                                 <th className="px-5 py-3">Propietario</th>
                                                 <th className="px-5 py-3">Equipo / Serie</th>
+                                                {activeTab === 'ruc10' && <th className="px-5 py-3 text-center">Bloque</th>}
                                                 <th className="px-5 py-3 text-right">Costo</th>
                                                 <th className="px-5 py-3 text-center">Estado</th>
                                                 {activeTab === 'ruc10' && <th className="px-5 py-3 text-center w-12"></th>}
@@ -1001,10 +1002,6 @@ export const InventoryTransferModule: React.FC = () => {
                                                                             {getSupplierName(product.supplierId)}
                                                                         </span>
                                                                     )}
-
-                                                                    {product.blockNumber && (
-                                                                        <span className="ml-1 bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-sm border border-amber-200">B{product.blockNumber}</span>
-                                                                    )}
                                                                 </div>
                                                             </td>
                                                             <td className="px-5 py-3.5">
@@ -1012,6 +1009,17 @@ export const InventoryTransferModule: React.FC = () => {
                                                                 <div className="text-[10px] font-bold text-slate-400 font-mono uppercase mt-0.5">{product.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {product.serialNumber}</div>
                                                                 {product.specs && <div className="text-[10px] text-slate-400 font-medium italic mt-0.5">{product.specs}</div>}
                                                             </td>
+                                                            {activeTab === 'ruc10' && (
+                                                                <td className="px-5 py-3.5 text-center">
+                                                                    {product.blockNumber ? (
+                                                                        <span className="inline-flex items-center justify-center min-w-[32px] bg-amber-50 text-amber-700 text-xs font-black px-2 py-1 rounded-md border border-amber-200 shadow-sm">
+                                                                            {product.blockNumber}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-300 font-bold text-xs">-</span>
+                                                                    )}
+                                                                </td>
+                                                            )}
                                                             <td className="px-5 py-3.5 text-right">
                                                                 <span className="font-black text-slate-900 text-sm">S/ {(activeTab === 'ruc10' ? (product.totalCost || 0) : (product.transferTotal || 0)).toFixed(2)}</span>
                                                             </td>

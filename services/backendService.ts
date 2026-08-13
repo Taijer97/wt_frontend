@@ -371,6 +371,7 @@ export const BackendService = {
       transferDocType: p.transfer_doc_type,
       transferDocNumber: p.transfer_doc_number,
       transferDate: p.transfer_date,
+      blockNumber: p.block_number,
     };
   },
 
