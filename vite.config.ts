@@ -16,6 +16,10 @@ export default defineConfig(({ mode }) => {
       '/config': { target, changeOrigin: true, secure: false },
       '/roles': { target, changeOrigin: true, secure: false },
       '/expenses': { target, changeOrigin: true, secure: false },
+      '/sellers': { target, changeOrigin: true, secure: false },
+      '/health': { target, changeOrigin: true, secure: false },
+      // Archivos estáticos (uploads, avatars, documentos)
+      '/files': { target, changeOrigin: true, secure: false },
       // Proxy WebSocket usando target HTTP; el flag ws habilita el upgrade
       '/ws': { target, ws: true, changeOrigin: true }
     };

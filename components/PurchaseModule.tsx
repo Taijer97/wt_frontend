@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CivilStatus, HardwareOrigin, PurchaseEntry, PurchaseStatus, Intermediary } from '../types';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
-import { User, Clock, History, ShieldCheck, Download, Printer, Camera, FileText, FileDigit, Tag, Package, Eye } from 'lucide-react';
+import { User, Clock, History, ShieldCheck, Download, Printer, Camera, FileText, FileDigit, Tag, Package, Eye, RefreshCw, Upload } from 'lucide-react';
 
 import { EditPurchaseModal } from './purchases/EditPurchaseModal';
 import { PurchaseRegisterForm } from './purchases/PurchaseRegisterForm';
@@ -275,6 +275,12 @@ export const PurchaseModule: React.FC = () => {
                 icon={<Camera className="w-5 h-5 text-blue-500" />}
                 purchaseId={viewingPurchase.id}
                 docKind="voucher"
+                onReplaceSuccess={(newUrl) => {
+                  alert.success('Voucher bancario reemplazado correctamente');
+                  setViewingPurchase(prev => prev ? { ...prev, voucherUrl: newUrl } : null);
+                  setHistoryRefreshKey(k => k + 1);
+                  setPendingRefreshKey(k => k + 1);
+                }}
               />
               <SupportFileCard
                 title="Contrato Legalizado"
@@ -282,13 +288,25 @@ export const PurchaseModule: React.FC = () => {
                 icon={<FileText className="w-5 h-5 text-emerald-500" />}
                 purchaseId={viewingPurchase.id}
                 docKind="contract"
+                onReplaceSuccess={(newUrl) => {
+                  alert.success('Contrato legalizado reemplazado correctamente');
+                  setViewingPurchase(prev => prev ? { ...prev, contractUrl: newUrl } : null);
+                  setHistoryRefreshKey(k => k + 1);
+                  setPendingRefreshKey(k => k + 1);
+                }}
               />
               <SupportFileCard
                 title="Declaración de Origen"
-                fileName={viewingPurchase.originProofUrl}
+                fileName={viewingPurchase.originProofUrl || viewingPurchase.djUrl}
                 icon={<FileDigit className="w-5 h-5 text-purple-500" />}
                 purchaseId={viewingPurchase.id}
                 docKind="dj"
+                onReplaceSuccess={(newUrl) => {
+                  alert.success('Declaración de origen reemplazada correctamente');
+                  setViewingPurchase(prev => prev ? { ...prev, originProofUrl: newUrl, djUrl: newUrl } : null);
+                  setHistoryRefreshKey(k => k + 1);
+                  setPendingRefreshKey(k => k + 1);
+                }}
               />
             </div>
 
@@ -396,13 +414,18 @@ const SupportFileCard = ({
   icon,
   purchaseId,
   docKind,
+  onReplaceSuccess,
 }: {
   title: string;
   fileName?: string;
   icon: React.ReactNode;
   purchaseId: string;
   docKind: 'voucher' | 'contract' | 'dj';
+  onReplaceSuccess?: (newUrl: string) => void;
 }) => {
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
   const fileUrl = fileName ? BackendService.resolveUrl(`/purchases/${purchaseId}/download/${docKind}`) : '#';
   const apiBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8001').replace(/\/$/, '');
 
@@ -479,39 +502,87 @@ const SupportFileCard = ({
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploading(true);
+      const res = await BackendService.uploadPurchaseFile(purchaseId, file, docKind);
+      if (onReplaceSuccess) {
+        onReplaceSuccess(res.url || res.filename);
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.message || 'Error al reemplazar el archivo');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
-    <div className="bg-white p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center space-y-3 group hover:border-blue-500 transition-colors shadow-xs">
+    <div className="bg-white p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center space-y-3 group hover:border-blue-500 transition-colors shadow-xs relative">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/*,application/pdf"
+        className="hidden"
+      />
       <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center shadow-xs">{icon}</div>
       <div>
         <h5 className="font-extrabold uppercase text-xs text-slate-800">{title}</h5>
         <p className="text-[10px] text-slate-400 font-mono truncate max-w-[140px] mt-0.5">{fileName || 'Sin archivo'}</p>
       </div>
-      {fileName ? (
-        <div className="w-full flex gap-2 pt-1">
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={handleView}
-            leftIcon={<Eye className="w-3.5 h-3.5 text-blue-600" />}
-            className="flex-1"
-          >
-            Ver
-          </Button>
-          <Button
-            variant="primary"
-            size="xs"
-            onClick={handleDownload}
-            leftIcon={<Download className="w-3.5 h-3.5 text-white" />}
-            className="flex-1"
-          >
-            Descargar
-          </Button>
-        </div>
-      ) : (
-        <span className="w-full py-2 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-bold uppercase block">
-          No disponible
-        </span>
-      )}
+
+      <div className="w-full flex flex-col gap-2 pt-1">
+        {fileName ? (
+          <div className="flex gap-1.5 w-full">
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleView}
+              leftIcon={<Eye className="w-3.5 h-3.5 text-blue-600" />}
+              className="flex-1 text-[11px] px-2"
+              title="Ver Documento"
+            >
+              Ver
+            </Button>
+            <Button
+              variant="primary"
+              size="xs"
+              onClick={handleDownload}
+              leftIcon={<Download className="w-3.5 h-3.5 text-white" />}
+              className="flex-1 text-[11px] px-2"
+              title="Descargar Documento"
+            >
+              Descargar
+            </Button>
+          </div>
+        ) : null}
+
+        <Button
+          variant={fileName ? "ghost" : "primary"}
+          size="xs"
+          disabled={isUploading}
+          onClick={() => fileInputRef.current?.click()}
+          leftIcon={
+            isUploading ? (
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500 animate-spin" />
+            ) : fileName ? (
+              <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
+            ) : (
+              <Upload className="w-3.5 h-3.5 text-white" />
+            )
+          }
+          className={`w-full text-[11px] font-extrabold border ${
+            fileName
+              ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          {isUploading ? 'Reemplazando...' : fileName ? 'Reemplazar' : 'Subir Documento'}
+        </Button>
+      </div>
     </div>
   );
 };

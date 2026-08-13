@@ -1,17 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, StickyNote, Trash2 } from 'lucide-react';
 import { CustomerRecord } from '../types';
 import { BackendService } from '../services/backendService';
 import { DataService } from '../services/dataService';
-import { DataTable, Column, Button, Modal, Textarea, ConfirmDialog, useAlert, Badge } from './ui';
+import { DataTable, Column, Button, useAlert, Badge } from './ui';
+import { CustomerNoteModal } from './CustomerNoteModal';
+import { StickyNote } from 'lucide-react';
 
 export const CustomersModule: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
-  const [deletingCustomer, setDeletingCustomer] = useState<CustomerRecord | null>(null);
-  const [noteDraft, setNoteDraft] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const alert = useAlert();
 
@@ -39,45 +37,23 @@ export const CustomersModule: React.FC = () => {
 
   const openEditor = (customer: CustomerRecord) => {
     setEditingCustomer(customer);
-    setNoteDraft(customer.note || '');
   };
 
   const closeEditor = () => {
     setEditingCustomer(null);
-    setNoteDraft('');
   };
 
-  const saveNote = async () => {
+  const handleUpdateCustomerNote = async (newNoteStr: string) => {
     if (!editingCustomer) return;
-    setSaving(true);
     try {
       const updated = await BackendService.updateCustomer(editingCustomer.id, {
-        note: noteDraft.trim(),
+        note: newNoteStr,
       });
       setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      alert.success('Nota actualizada correctamente');
-      closeEditor();
+      setEditingCustomer(updated);
+      alert.success('Notas de alerta actualizadas');
     } catch {
-      alert.error('No se pudo guardar la nota');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const confirmClearNote = async () => {
-    if (!deletingCustomer) return;
-    setSaving(true);
-    try {
-      const updated = await BackendService.updateCustomer(deletingCustomer.id, {
-        note: '',
-      });
-      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      alert.success('Nota eliminada');
-      setDeletingCustomer(null);
-    } catch {
-      alert.error('No se pudo eliminar la nota');
-    } finally {
-      setSaving(false);
+      alert.error('No se pudo guardar la nota de alerta');
     }
   };
 
@@ -112,14 +88,24 @@ export const CustomersModule: React.FC = () => {
     },
     {
       key: 'note',
-      header: 'Nota Alerta',
+      header: 'Notas de Alerta Pendientes',
       render: (_, c) =>
         c.note ? (
-          <Badge variant="warning" size="sm" dot>
-            {c.note}
-          </Badge>
+          <div className="flex flex-col gap-1 max-w-[280px]">
+            {c.note.split('\n').filter(Boolean).map((line, idx) => {
+              const match = line.match(/^(\[Bloque\s+\d+\]|\[General\])\s*(.*)/i);
+              return (
+                <div key={idx} className="flex items-center gap-1.5 text-[11px]">
+                  <Badge variant={match && match[1].startsWith('[Bloque') ? 'warning' : 'info'} size="sm">
+                    {match ? match[1].replace(/^\[|\]$/g, '') : 'General'}
+                  </Badge>
+                  <span className="truncate font-medium text-slate-700">{match ? match[2] : line}</span>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <span className="text-[10px] font-bold text-slate-300 uppercase">SIN NOTA</span>
+          <span className="text-[10px] font-bold text-slate-300 uppercase">SIN NOTAS</span>
         ),
     },
   ];
@@ -129,7 +115,7 @@ export const CustomersModule: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Clientes y Notas de Alerta</h2>
-          <p className="text-xs text-slate-500 font-medium">Gestión de expedientes de clientes y notas informativas</p>
+          <p className="text-xs text-slate-500 font-medium">Gestión de expedientes de clientes y notas informativas desglosadas por bloques</p>
         </div>
       </div>
 
@@ -140,6 +126,8 @@ export const CustomersModule: React.FC = () => {
         searchable
         searchPlaceholder="Buscar por DNI/RUC, Nombre, Teléfono o Nota..."
         searchKeys={['docNumber', 'fullName', 'phone', 'note']}
+        pageSize={10}
+        showPagination={true}
         rowActions={(customer) =>
           canManage ? (
             <div className="flex justify-end gap-1.5">
@@ -149,63 +137,30 @@ export const CustomersModule: React.FC = () => {
                 onClick={() => openEditor(customer)}
                 leftIcon={<StickyNote className="w-3.5 h-3.5" />}
               >
-                {customer.note ? 'Editar Nota' : 'Añadir Nota'}
+                {customer.note ? 'Gestionar Notas' : 'Añadir Nota'}
               </Button>
-              {customer.note && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => setDeletingCustomer(customer)}
-                  title="Eliminar Nota"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                </Button>
-              )}
             </div>
           ) : null
         }
       />
 
-      {/* Editor de Nota Modal */}
-      <Modal
-        open={!!editingCustomer}
-        onClose={closeEditor}
-        title={`Nota para ${editingCustomer?.fullName}`}
-        subtitle={`DNI/RUC: ${editingCustomer?.docNumber}`}
-        icon={<FileText className="w-5 h-5 text-amber-500" />}
-        size="md"
-        footer={
-          <div className="flex justify-end gap-2 w-full">
-            <Button variant="ghost" onClick={closeEditor} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={saveNote} isLoading={saving}>
-              Guardar Nota
-            </Button>
-          </div>
-        }
-      >
-        <div className="py-2">
-          <Textarea
-            label="Nota de Alerta (Visible al ingresar DNI)"
-            placeholder="Ej: Cliente solicitó comprobante especial / Debe saldo anterior..."
-            value={noteDraft}
-            onChange={(e) => setNoteDraft(e.target.value)}
-            rows={4}
-          />
-        </div>
-      </Modal>
-
-      {/* Confirmación Eliminar Nota */}
-      <ConfirmDialog
-        open={!!deletingCustomer}
-        onClose={() => setDeletingCustomer(null)}
-        onConfirm={confirmClearNote}
-        variant="danger"
-        title="¿Eliminar Nota de Alerta?"
-        message={`Esta acción borrará la nota asociada a ${deletingCustomer?.fullName}.`}
-        loading={saving}
-      />
+      {/* Modal Interactivo de Notas por Bloque */}
+      {editingCustomer && (
+        <CustomerNoteModal
+          open={!!editingCustomer}
+          customerName={editingCustomer.fullName}
+          docNumber={editingCustomer.docNumber}
+          customerId={editingCustomer.id}
+          note={editingCustomer.note || ''}
+          initialShowAddForm={true}
+          onClose={closeEditor}
+          onSaveNote={handleUpdateCustomerNote}
+          onDelete={async () => {
+            await handleUpdateCustomerNote('');
+            closeEditor();
+          }}
+        />
+      )}
     </div>
   );
 };

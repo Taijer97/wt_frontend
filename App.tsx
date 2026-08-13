@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
+import { StatisticalDashboard } from './components/StatisticalDashboard';
 import { PurchaseModule } from './components/PurchaseModule';
 import { InventoryTransferModule } from './components/InventoryTransferModule';
 import { SalesModule } from './components/SalesModule';
@@ -31,39 +32,38 @@ const App: React.FC = () => {
 
   const preloadInitialData = async () => {
     try {
-      // Cargar datos críticos y pesados en paralelo
-      // Gracias al caching, esto poblará el localStorage
-      await Promise.all([
+      // Cargar datos críticos en paralelo de manera resiliente
+      await Promise.allSettled([
         BackendService.getConfig(),
         BackendService.getRoles(),
-        BackendService.getProducts(),      // Heavy
-        BackendService.getSuppliers(),     // Medium
-        BackendService.getIntermediaries(),// Medium
-        BackendService.getEmployees(),     // Light
-        BackendService.getExpenses(),      // Medium
+        BackendService.getProducts(),
+        BackendService.getSuppliers(),
+        BackendService.getIntermediaries(),
+        BackendService.getEmployees(),
+        BackendService.getExpenses(),
       ]);
       
-      // Sincronizar roles con DataService (legacy support)
-      const roles = await BackendService.getRoles();
-      const config = await BackendService.getConfig();
-      
-      const roleConfigs = roles.map((r: any) => ({
-           id: r.id,
-           role: r.name,
-           label: r.label,
-           permissions: r.permissions
-      }));
-      
-      const fullConfig = {
+      try {
+        const roles = await BackendService.getRoles();
+        const config = await BackendService.getConfig();
+        
+        const roleConfigs = roles.map((r: any) => ({
+          id: r.id,
+          role: r.name,
+          label: r.label,
+          permissions: r.permissions
+        }));
+        
+        const fullConfig = {
           ...config,
           roleConfigs: roleConfigs.length > 0 ? roleConfigs : (DataService.getConfig().roleConfigs || [])
-      };
-      
-      DataService.saveConfig(fullConfig);
-      console.log("System data preloaded & synced");
+        };
+        
+        DataService.saveConfig(fullConfig);
+      } catch {}
+      console.log("System data preloaded");
     } catch (e) {
-      console.error("Preload failed", e);
-      // No bloqueamos la app si falla el preload, el usuario podrá reintentar dentro
+      console.error("Preload warning", e);
     }
   };
 
@@ -195,7 +195,9 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard currentUser={currentUser!} onNavigate={(tab) => setActiveTab(tab)} />;
+      case 'tablero-estadistico':
+        return <StatisticalDashboard />;
       case 'compras':
         return <PurchaseModule />;
       case 'clientes':
@@ -256,6 +258,12 @@ const App: React.FC = () => {
         onTabChange={setActiveTab} 
         currentUser={currentUser}
         onLogout={handleLogout}
+        onUserUpdate={(updated) => {
+          setCurrentUser(updated);
+          // Persist updated user session (photo_url etc.)
+          const session = JSON.parse(localStorage.getItem('wasitech_session') || '{}');
+          localStorage.setItem('wasitech_session', JSON.stringify({ ...session, ...updated }));
+        }}
       >
         {wsMsg && (
           <div className="mb-2 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-black uppercase tracking-widest px-3 py-2 rounded-xl">

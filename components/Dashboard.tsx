@@ -1,449 +1,657 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { 
-  TrendingUp, 
-  Calculator, 
-  RefreshCw, 
-  ShieldCheck, 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+} from 'recharts';
+import { 
+  Store, 
+  ShoppingCart, 
+  ArrowRightLeft, 
+  BarChart3, 
   Users, 
-  PiggyBank, 
+  Settings, 
+  TrendingUp, 
+  Package, 
+  ShieldCheck, 
   ArrowUpRight, 
-  Target, 
-  FileText, 
-  Info, 
-  ShieldAlert
+  Clock, 
+  Sparkles, 
+  ChevronRight, 
+  Activity, 
+  FileText,
+  Building2,
+  WalletCards,
+  CheckCircle2,
+  AlertCircle,
+  Calendar
 } from 'lucide-react';
+import { Employee, TaxRegime, UserRole, AppModule } from '../types';
 import { DataService } from '../services/dataService';
 import { BackendService } from '../services/backendService';
-import { ProductStatus, TaxRegime } from '../types';
-import { KPICard as UIKPICard, Card, Button, Tabs, Badge, useAlert } from './ui';
+import { Button, Badge, useAlert } from './ui';
 
-export const Dashboard: React.FC = () => {
+interface WelcomeDashboardProps {
+  currentUser?: Employee;
+  onNavigate?: (tab: string) => void;
+}
+
+export const Dashboard: React.FC<WelcomeDashboardProps> = ({ currentUser, onNavigate }) => {
   const config = DataService.getConfig();
-  const isRER = config.ruc20TaxRegime === TaxRegime.RER;
-  const alert = useAlert();
 
-  const [activeView, setActiveView] = useState<'monthly' | 'annual'>('monthly');
-  const [stats, setStats] = useState({
-    igvVentas: 0,
-    igvCompras: 0,
-    igvToPay: 0,
-    rentaToPay: 0,
-    salesMonthBase: 0,
-    netProfitMonth: 0,
-    totalSunat: 0,
-    payrollCostMonth: 0,
-    totalExpensesOps: 0,
-    costOfGoodsSold: 0,
-    annualSales: 0,
-    annualExpenses: 0,
-    annualNetProfit: 0,
-    projectedAnnualTax: 0,
-    uitUsed: 0,
-    uitLimitPercent: 0,
-    uit15Limit: 0,
-  });
-
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [todaySales, setTodaySales] = useState({ total: 0, count: 0 });
+  const [monthPurchases, setMonthPurchases] = useState({ total: 0, count: 0 });
+  const [criticalStockCount, setCriticalStockCount] = useState(0);
+  const [criticalProducts, setCriticalProducts] = useState<any[]>([]);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [weeklyTrendData, setWeeklyTrendData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isRER && activeView === 'annual') {
-      setActiveView('monthly');
-    }
-    calculateRealData();
-  }, [activeView, config.ruc20TaxRegime]);
+    loadDashboardSummary();
+  }, []);
 
-  const calculateRealData = async () => {
-    const transactionsSale = await BackendService.getTransactions('sale');
-    const transactionsPurchase = await BackendService.getTransactions('purchase');
-    let inventory = DataService.getProducts();
-    let employees = DataService.getEmployees();
-    const expenses = await BackendService.getExpenses();
-
+  const loadDashboardSummary = async () => {
+    setLoading(true);
     try {
-      inventory = await BackendService.getProducts();
-    } catch {}
-    try {
-      employees = await BackendService.getEmployees();
-    } catch {}
+      const sales = await BackendService.getTransactions('sale');
+      const purchases = await BackendService.getTransactions('purchase');
+      let products: any[] = [];
+      try { products = await BackendService.getProducts(); } catch {}
 
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
 
-    const salesThisMonth = transactionsSale.filter((t: any) => {
-      const d = new Date(t.date || t.created_at);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
+      // Today's Sales
+      const salesToday = sales.filter((t: any) => {
+        const d = (t.date || t.created_at || '').split('T')[0];
+        return d === todayStr;
+      });
+      const todayTotal = salesToday.reduce((acc: number, t: any) => acc + Number(t.totalAmount || t.total_amount || 0), 0);
 
-    const purchasesThisMonth = transactionsPurchase.filter((t: any) => {
-      const d = new Date(t.date || t.created_at);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
+      setTodaySales({ total: todayTotal, count: salesToday.length });
 
-    const expensesThisMonth = expenses.filter((e: any) => {
-      const d = new Date(e.date || e.created_at);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
+      // Month Purchases
+      const purchasesMonth = purchases.filter((t: any) => {
+        const d = new Date(t.date || t.created_at);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      });
+      const monthPurchasesTotal = purchasesMonth.reduce((acc: number, t: any) => acc + Number(t.totalAmount || t.total_amount || 0), 0);
 
-    let salesMonthBase = 0;
-    let igvVentas = 0;
-    salesThisMonth.forEach((t: any) => {
-      const total = Number(t.totalAmount || t.total_amount || 0);
-      const base = total / 1.18;
-      salesMonthBase += base;
-      igvVentas += total - base;
-    });
+      setMonthPurchases({ total: monthPurchasesTotal, count: purchasesMonth.length });
 
-    let purchasesMonthBase = 0;
-    let igvCompras = 0;
-    purchasesThisMonth.forEach((t: any) => {
-      const total = Number(t.totalAmount || t.total_amount || 0);
-      const base = total / 1.18;
-      purchasesMonthBase += base;
-      igvCompras += total - base;
-    });
+      // Low Stock Products
+      const lowStock = products.filter((p: any) => (p.stock || 0) <= (p.minStockAlert || 5));
+      setCriticalStockCount(lowStock.length);
+      setCriticalProducts(lowStock.slice(0, 5));
 
-    let payrollCostMonth = 0;
-    employees.forEach((e: any) => {
-      payrollCostMonth += Number(e.baseSalary || 0);
-    });
+      // Recent 5 Sales
+      const sortedSales = [...sales].sort((a: any, b: any) => {
+        return new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime();
+      });
+      setRecentSales(sortedSales.slice(0, 5));
 
-    let totalExpensesOps = 0;
-    expensesThisMonth.forEach((e: any) => {
-      totalExpensesOps += Number(e.amount || 0);
-    });
+      // Last 7 days trend
+      const last7Days = [];
+      for (let i = 6; i >= 0; i--) {
+        const dateObj = new Date();
+        dateObj.setDate(dateObj.getDate() - i);
+        const dayStr = dateObj.toISOString().split('T')[0];
+        const dayLabel = dateObj.toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric' });
 
-    const costOfGoodsSold = salesMonthBase * 0.7;
-    const igvToPay = Math.max(0, igvVentas - igvCompras);
-    const rentaRate = config.rentaRate || 0.01;
-    const rentaToPay = salesMonthBase * rentaRate;
-    const totalSunat = igvToPay + rentaToPay;
-    const netProfitMonth = salesMonthBase - costOfGoodsSold - payrollCostMonth - totalExpensesOps - rentaToPay;
+        const daySales = sales.filter((t: any) => (t.date || t.created_at || '').split('T')[0] === dayStr);
+        const dayTotal = daySales.reduce((acc: number, t: any) => acc + Number(t.totalAmount || t.total_amount || 0), 0);
 
-    const salesThisYear = transactionsSale.filter((t: any) => {
-      const d = new Date(t.date || t.created_at);
-      return d.getFullYear() === currentYear;
-    });
-
-    let annualSales = 0;
-    salesThisYear.forEach((t: any) => {
-      const total = Number(t.totalAmount || t.total_amount || 0);
-      annualSales += total / 1.18;
-    });
-
-    const annualExpenses = (payrollCostMonth + totalExpensesOps) * 12;
-    const annualNetProfit = Math.max(0, annualSales - annualSales * 0.7 - annualExpenses);
-
-    const uitValue = config.uit || 5150;
-    const uit15Limit = uitValue * 15;
-    let projectedAnnualTax = 0;
-
-    if (annualNetProfit > 0) {
-      if (annualNetProfit <= uit15Limit) {
-        projectedAnnualTax = annualNetProfit * 0.1;
-      } else {
-        projectedAnnualTax = uit15Limit * 0.1 + (annualNetProfit - uit15Limit) * 0.295;
+        last7Days.push({
+          name: dayLabel,
+          ventas: Math.round(dayTotal),
+        });
       }
+      setWeeklyTrendData(last7Days);
+
+    } catch (err) {
+      console.error('Error loading welcome dashboard:', err);
+    } finally {
+      setLoading(false);
     }
-
-    const uit1700Limit = uitValue * 1700;
-    const uitUsed = annualSales / uitValue;
-    const uitLimitPercent = (annualSales / uit1700Limit) * 100;
-
-    setStats({
-      igvVentas,
-      igvCompras,
-      igvToPay,
-      rentaToPay,
-      salesMonthBase,
-      netProfitMonth,
-      totalSunat,
-      payrollCostMonth,
-      totalExpensesOps,
-      costOfGoodsSold,
-      annualSales,
-      annualExpenses,
-      annualNetProfit,
-      projectedAnnualTax,
-      uitUsed,
-      uitLimitPercent,
-      uit15Limit,
-    });
-
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
-    const mockData = months.map((m, idx) => {
-      const isCurrentOrPast = idx <= currentMonth;
-      const v = isCurrentOrPast ? Math.floor(salesMonthBase * (0.8 + idx * 0.05)) : 0;
-      const u = isCurrentOrPast ? Math.floor(v * 0.25) : 0;
-      return { name: m, ventas: v, utilidad: u };
-    });
-
-    setChartData(mockData);
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Buenos días';
+    if (hour < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
+
+  const userName = currentUser?.fullName ? currentUser.fullName.split(' ')[0] : 'Usuario';
+
+  const formatPEN = (val: number) => {
+    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
+  };
+
+  const alert = useAlert();
+
+  const roleConfig = config.roleConfigs?.find(r => r.role === currentUser?.role);
+
+  const hasAccess = (moduleId: AppModule, defaultRoles: UserRole[] = ['ADMIN']) => {
+    if (!currentUser) return true;
+    if (currentUser.role === 'ADMIN') return true;
+    if (roleConfig && roleConfig.permissions && roleConfig.permissions[moduleId]) {
+      return Boolean(roleConfig.permissions[moduleId].read);
+    }
+    return defaultRoles.includes(currentUser.role);
+  };
+
+  const handleSafeNavigate = (tab: string, moduleId: AppModule, defaultRoles: UserRole[] = ['ADMIN']) => {
+    if (hasAccess(moduleId, defaultRoles)) {
+      onNavigate?.(tab);
+    } else {
+      alert.error('No tienes permisos suficientes para acceder a este módulo.');
+    }
+  };
+
+  const getSunatCountdown = (dayLimit: number = 15) => {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    let targetDate = new Date(currentYear, currentMonth, dayLimit);
+    if (currentDay > dayLimit) {
+      targetDate = new Date(currentYear, currentMonth + 1, dayLimit);
+    }
+
+    const diffTime = targetDate.getTime() - today.getTime();
+    const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return {
+      daysLeft: Math.max(0, daysLeft),
+      dayLimit,
+      targetDateStr: targetDate.toLocaleDateString('es-PE', { day: 'numeric', month: 'long' }),
+      isToday: currentDay === dayLimit,
+      isClose: daysLeft <= 5 && currentDay !== dayLimit,
+    };
+  };
+
+  const sunatRuc10 = getSunatCountdown(config.ruc10DeclarationDay || 15);
+  const sunatRuc20 = getSunatCountdown(config.ruc20DeclarationDay || 18);
+
+  const allLaunchers = [
+    {
+      id: 'ventas',
+      label: 'Nueva Venta',
+      subtitle: 'Caja / POS Vendedor',
+      icon: Store,
+      moduleId: 'sales' as AppModule,
+      defaultRoles: ['ADMIN', 'CAJA'] as UserRole[],
+      bgClass: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-900/20 hover:shadow-xl hover:scale-105',
+      iconBg: 'bg-white/20 text-white',
+      chevronClass: 'text-white/70',
+      titleClass: 'text-white',
+      subtitleClass: 'text-white/80'
+    },
+    {
+      id: 'compras',
+      label: 'Compras RUC 10',
+      subtitle: 'Registro & Expediente',
+      icon: ShoppingCart,
+      moduleId: 'purchases_ruc10' as AppModule,
+      defaultRoles: ['ADMIN', 'USER'] as UserRole[],
+      bgClass: 'bg-white border border-slate-200 text-slate-800 shadow-xs hover:shadow-md hover:border-blue-300 hover:scale-105',
+      iconBg: 'bg-blue-50 text-blue-600',
+      chevronClass: 'text-slate-400',
+      titleClass: 'text-slate-900',
+      subtitleClass: 'text-slate-400'
+    },
+    {
+      id: 'inventario',
+      label: 'Inventario & Stock',
+      subtitle: 'Transf. RUC 10 → 20',
+      icon: ArrowRightLeft,
+      moduleId: 'inventory' as AppModule,
+      defaultRoles: ['ADMIN', 'USER', 'CAJA'] as UserRole[],
+      bgClass: 'bg-white border border-slate-200 text-slate-800 shadow-xs hover:shadow-md hover:border-purple-300 hover:scale-105',
+      iconBg: 'bg-purple-50 text-purple-600',
+      chevronClass: 'text-slate-400',
+      titleClass: 'text-slate-900',
+      subtitleClass: 'text-slate-400'
+    },
+    {
+      id: 'tablero-estadistico',
+      label: 'Tablero Estadístico',
+      subtitle: 'Liquidación SUNAT & UIT',
+      icon: BarChart3,
+      moduleId: 'tablero_estadistico' as AppModule,
+      defaultRoles: ['ADMIN', 'CAJA', 'RRHH', 'USER'] as UserRole[],
+      bgClass: 'bg-white border border-slate-200 text-slate-800 shadow-xs hover:shadow-md hover:border-amber-300 hover:scale-105',
+      iconBg: 'bg-amber-50 text-amber-600',
+      chevronClass: 'text-slate-400',
+      titleClass: 'text-slate-900',
+      subtitleClass: 'text-slate-400'
+    },
+    {
+      id: 'clientes',
+      label: 'Clientes & Notas',
+      subtitle: 'Alertas por Bloque',
+      icon: Users,
+      moduleId: 'clientes' as AppModule,
+      defaultRoles: ['ADMIN', 'CAJA', 'RRHH', 'USER'] as UserRole[],
+      bgClass: 'bg-white border border-slate-200 text-slate-800 shadow-xs hover:shadow-md hover:border-teal-300 hover:scale-105',
+      iconBg: 'bg-teal-50 text-teal-600',
+      chevronClass: 'text-slate-400',
+      titleClass: 'text-slate-900',
+      subtitleClass: 'text-slate-400'
+    },
+    {
+      id: 'configuracion',
+      label: 'Configuración',
+      subtitle: 'Roles & Accesos',
+      icon: Settings,
+      moduleId: 'settings' as AppModule,
+      defaultRoles: ['ADMIN', 'RRHH'] as UserRole[],
+      bgClass: 'bg-slate-900 text-white shadow-xs hover:shadow-md hover:scale-105 border border-slate-800',
+      iconBg: 'bg-slate-800 text-slate-300',
+      chevronClass: 'text-slate-500',
+      titleClass: 'text-white',
+      subtitleClass: 'text-slate-400'
+    }
+  ];
+
+  const visibleLaunchers = allLaunchers.filter(item => hasAccess(item.moduleId, item.defaultRoles));
+
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
-      {/* Dynamic View Toggle Tabs */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Tablero Consolidado</h2>
-          <p className="text-xs text-slate-500 font-medium">Indicadores financieros, tributación SUNAT y proyección de renta</p>
-        </div>
+    <div className="space-y-8 animate-fade-in pb-12">
+      {/* ── Enterprise Hero Welcome Banner ────────────────────────────────────────── */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 text-white rounded-3xl p-6 md:p-8 shadow-2xl border border-slate-800 relative overflow-hidden">
+        {/* Glowing Orbs */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex items-center gap-3">
-          <Tabs
-            tabs={[
-              { id: 'monthly', label: 'Mensual' },
-              ...(!isRER ? [{ id: 'annual', label: 'Anualizado (RMT)' }] : []),
-            ]}
-            activeTab={activeView}
-            onTabChange={(id) => setActiveView(id as any)}
-            variant="pills"
-          />
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-black uppercase tracking-wider border border-emerald-500/30 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Centro de Mando WasiTech
+              </span>
+              <Badge variant="outline" size="sm" className="border-slate-700 text-slate-300">
+                {config.companyName || 'WASITECH ERP'}
+              </Badge>
+            </div>
+            <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white">
+              ¡{getGreeting()}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">{userName}</span>! 👋
+            </h1>
+            <p className="text-xs md:text-sm text-slate-300 font-medium max-w-xl">
+              Bienvenido al portal empresarial. Revisa el estado operativo en tiempo real y ejecuta acciones clave con un solo clic.
+            </p>
+          </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { calculateRealData(); alert.success('Datos actualizados'); }}
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-          >
-            Actualizar
-          </Button>
+          {/* User Quick Badge & Clock */}
+          <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 backdrop-blur-md space-y-2 text-right self-stretch md:self-auto shrink-0">
+            <div className="flex items-center justify-end gap-2 text-xs font-bold text-slate-300">
+              <Clock className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rol Registrado:</span>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-black border border-emerald-500/30">
+                {currentUser?.role || 'ADMIN'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {activeView === 'monthly' ? (
-        <>
-          {isRER && (
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl flex items-center gap-3 text-blue-800 text-xs font-medium">
-              <Info className="w-5 h-5 flex-shrink-0 text-blue-600" />
-              <p>
-                Régimen <strong className="font-extrabold uppercase">RER (Especial)</strong> activo. Los pagos de renta son cancelatorios y no requiere DJ anual.
-              </p>
-            </div>
-          )}
-
-          {/* 4 KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <UIKPICard
-              title="Ventas Netas"
-              value={stats.salesMonthBase}
-              prefix="S/"
-              subtitle="Sin impuestos"
-              icon={<TrendingUp className="w-5 h-5 text-blue-600" />}
-            />
-            <UIKPICard
-              title="Utilidad Real"
-              value={stats.netProfitMonth}
-              prefix="S/"
-              subtitle="Libre de gastos"
-              icon={<PiggyBank className="w-5 h-5 text-emerald-600" />}
-            />
-            <UIKPICard
-              title="Planilla + RRHH"
-              value={stats.payrollCostMonth}
-              prefix="S/"
-              subtitle="Costo operativo"
-              icon={<Users className="w-5 h-5 text-amber-600" />}
-            />
-            <UIKPICard
-              title="Pago SUNAT"
-              value={stats.totalSunat}
-              prefix="S/"
-              subtitle="IGV + Renta"
-              icon={<Calculator className="w-5 h-5 text-emerald-400" />}
-              variant="dark"
-            />
+      {/* ── Quick Launcher Grid (Filtered by Matriz de Permisos CRUD) ────────────────────────────────────────── */}
+      {visibleLaunchers.length > 0 && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-base font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-600" />
+              Acceso Rápido & Módulos
+            </h2>
+            <span className="text-xs text-slate-500 font-medium">Módulos permitidos según tu rol y matriz de permisos</span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card padding="md" className="flex flex-col">
-              <h3 className="font-extrabold text-slate-900 mb-6 flex items-center gap-2 border-b pb-4 uppercase text-xs tracking-wider">
-                <ShieldCheck className="w-5 h-5 text-blue-700" />
-                Liquidación del Mes
-              </h3>
-              <div className="space-y-4 flex-1 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600 font-bold">IGV Ventas (Débito)</span>
-                  <span className="font-black text-slate-800">S/ {stats.igvVentas.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600 font-bold">IGV Compras (Crédito)</span>
-                  <span className="font-black text-emerald-700">- S/ {stats.igvCompras.toFixed(2)}</span>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-between items-center">
-                  <span className="text-xs font-black text-slate-600 uppercase">IGV a Pagar</span>
-                  <span className="font-black text-lg text-slate-900">S/ {stats.igvToPay.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-2">
-                  <div className="flex flex-col">
-                    <span className="text-slate-600 font-bold">
-                      Pago Renta ({(config.rentaRate * 100).toFixed(1)}%)
-                    </span>
-                    {isRER && (
-                      <span className="text-[9px] font-black text-blue-600 uppercase tracking-tight">
-                        PAGO CANCELATORIO RER
-                      </span>
-                    )}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {visibleLaunchers.map((launcher) => {
+              const IconComp = launcher.icon;
+              return (
+                <button
+                  key={launcher.id}
+                  onClick={() => handleSafeNavigate(launcher.id, launcher.moduleId, launcher.defaultRoles)}
+                  className={`p-4 rounded-2xl transition-all text-left group flex flex-col justify-between h-32 ${launcher.bgClass}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className={`p-2 rounded-xl ${launcher.iconBg}`}>
+                      <IconComp className="w-5 h-5" />
+                    </div>
+                    <ChevronRight className={`w-4 h-4 group-hover:translate-x-1 transition-transform ${launcher.chevronClass}`} />
                   </div>
-                  <span className="font-black text-slate-800">S/ {stats.rentaToPay.toFixed(2)}</span>
-                </div>
-              </div>
-              <div className="mt-6 pt-4 border-t flex justify-between items-end">
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Total Tributos</p>
-                  <p className="text-2xl font-black text-slate-900">S/ {stats.totalSunat.toFixed(2)}</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card padding="md" className="lg:col-span-2">
-              <h3 className="font-extrabold text-slate-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-wider">
-                <ArrowUpRight className="text-blue-700" />
-                Crecimiento de Ingresos
-              </h3>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData.filter((d) => d.ventas > 0 || d.name === 'Ene')}>
-                    <defs>
-                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }} />
-                    <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} />
-                    <Area type="monotone" dataKey="ventas" name="Ventas" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card padding="md" className="lg:col-span-2">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="font-black text-slate-900 text-lg uppercase tracking-tight">
-                    Estado de Límites {config.ruc20TaxRegime === TaxRegime.RMT ? 'RMT' : 'RGT'}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">Límite anual proyectado: 1,700 UIT</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-black text-slate-900">{stats.uitLimitPercent.toFixed(2)}%</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Utilizado</p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <div className="flex justify-between text-xs font-bold mb-2 uppercase">
-                    <span className="text-slate-600">Ventas Acumuladas {new Date().getFullYear()}</span>
-                    <span className="text-slate-900 font-black">S/ {stats.annualSales.toLocaleString()}</span>
+                  <div>
+                    <p className={`text-sm font-black tracking-tight ${launcher.titleClass}`}>{launcher.label}</p>
+                    <p className={`text-[10px] font-bold ${launcher.subtitleClass}`}>{launcher.subtitle}</p>
                   </div>
-                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden p-0.5 border border-slate-200">
-                    <div
-                      className={`h-full rounded-full transition-all duration-1000 ${
-                        stats.uitLimitPercent > 90 ? 'bg-red-500' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${Math.min(stats.uitLimitPercent, 100)}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold mt-2 text-slate-400 uppercase">
-                    <span>0 UIT</span>
-                    <span className="text-slate-700 font-black">
-                      Tope MYPE: S/ {(config.uit * 1700).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Equivalencia en UITs</p>
-                    <p className="text-lg font-black text-slate-900">
-                      {stats.uitUsed.toFixed(2)} <span className="text-xs font-bold opacity-50">UIT</span>
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
-                    <p className="text-[10px] font-bold text-emerald-800 uppercase mb-1">Margen Disponible</p>
-                    <p className="text-lg font-black text-emerald-900">
-                      S/ {(config.uit * 1700 - stats.annualSales).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            <Card variant="dark" padding="md" className="flex flex-col relative overflow-hidden">
-              <div className="flex justify-between items-start mb-6">
-                <Target className="w-7 h-7 text-emerald-400" />
-                <Badge variant="success" size="sm">
-                  Est. Anual {new Date().getFullYear()}
-                </Badge>
-              </div>
-              <h3 className="text-base font-black mb-1 uppercase tracking-tight text-white">Cierre Anual Renta</h3>
-              <p className="text-[10px] text-slate-400 mb-6 font-medium uppercase">
-                Escala Progresiva RMT: 10% hasta 15 UIT, 29.5% exceso.
-              </p>
-
-              <div className="space-y-4 flex-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-bold uppercase text-[10px]">Utilidad Proyectada</span>
-                  <span className="font-black text-white">S/ {stats.annualNetProfit.toLocaleString()}</span>
-                </div>
-                <div className="border-t border-slate-800 pt-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Impuesto Estimado a Regularizar</p>
-                  <p className="text-3xl font-black text-emerald-400 tracking-tight">
-                    S/ {stats.projectedAnnualTax.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <Button variant="primary" fullWidth leftIcon={<FileText className="w-4 h-4" />}>
-                  Generar Proforma DJ
-                </Button>
-              </div>
-            </Card>
-          </div>
-
-          <Card padding="md">
-            <h3 className="font-extrabold text-slate-900 mb-6 uppercase tracking-wider text-xs">
-              Análisis de Ingresos Anualizado
-            </h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }} />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} />
-                  <Bar dataKey="ventas" name="Ventas" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={26} />
-                  <Bar dataKey="utilidad" name="Utilidad" fill="#10b981" radius={[4, 4, 0, 0]} barSize={26} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        </>
-      )}
-
-      {/* Warning Toast for RMT Tax Limit */}
-      {!isRER && stats.uitLimitPercent > 80 && (
-        <div className="bg-red-50 border border-red-200 p-5 rounded-2xl flex items-center gap-4 text-red-900 animate-pulse">
-          <ShieldAlert className="w-10 h-10 flex-shrink-0 text-red-600" />
-          <div>
-            <h4 className="font-black text-sm uppercase tracking-tight">Advertencia de Límite de Régimen</h4>
-            <p className="text-xs font-medium opacity-90 mt-0.5">
-              Has alcanzado el {stats.uitLimitPercent.toFixed(1)}% del tope MYPE (1700 UIT). Si superas este monto, deberás migrar al Régimen General (RGT).
-            </p>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
+
+      {/* ── 4 Vital Indicators Widgets ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* Widget 1: Ventas del Día */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ventas de Hoy</span>
+            <p className="text-2xl font-black text-slate-900 tracking-tight">{formatPEN(todaySales.total)}</p>
+            <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> {todaySales.count} transacción(es) hoy
+            </p>
+          </div>
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Widget 2: Compras del Mes */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Compras del Mes</span>
+            <p className="text-2xl font-black text-slate-900 tracking-tight">{formatPEN(monthPurchases.total)}</p>
+            <p className="text-[11px] font-bold text-blue-600 flex items-center gap-1">
+              <FileText className="w-3.5 h-3.5" /> {monthPurchases.count} compra(s) registradas
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+            <ShoppingCart className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Widget 3: Stock Crítico */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Alerta de Stock Crítico</span>
+            <p className="text-2xl font-black text-slate-900 tracking-tight">{criticalStockCount} <span className="text-xs font-bold text-slate-400">productos</span></p>
+            <p className={`text-[11px] font-bold flex items-center gap-1 ${criticalStockCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              <AlertCircle className="w-3.5 h-3.5" /> {criticalStockCount > 0 ? 'Requiere reabastecimiento' : 'Stock saludable'}
+            </p>
+          </div>
+          <div className={`p-3 rounded-2xl ${criticalStockCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+            <Package className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Widget 4: Facturación SUNAT status */}
+        <div className="bg-slate-950 text-white rounded-3xl p-6 border border-slate-800 shadow-xl flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Régimen Fiscal</span>
+            <p className="text-lg font-black text-white">{config.ruc20TaxRegime || 'RMT'}</p>
+            <p className="text-[11px] font-bold text-slate-400">Tasa Renta: <span className="text-emerald-400 font-extrabold">{(config.rentaRate * 100).toFixed(1)}%</span></p>
+          </div>
+          <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Recordatorio Días Límite de Declaración SUNAT ────────────────────────────────────────── */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 text-white rounded-3xl p-6 border border-slate-800 shadow-2xl relative overflow-hidden">
+        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <span className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
+                <Calendar className="w-6 h-6 animate-pulse" />
+              </span>
+              <div>
+                <h3 className="font-black text-white text-base uppercase tracking-tight flex items-center gap-2">
+                  Recordatorio Días Límite de Declaración SUNAT
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">
+                  Cronograma mensual estimado de vencimiento para la presentación de IGV y Renta
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => handleSafeNavigate('tablero_estadistico', 'tablero_estadistico', ['ADMIN'])}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/40 shrink-0 border border-indigo-400/30 cursor-pointer"
+          >
+            <span>Ver Tablero Estadístico SUNAT</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-800/80 relative z-10">
+          {/* Card RUC 10 */}
+          <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800/90 flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="info" size="sm" className="font-black">RUC 10</Badge>
+                <span className="text-xs font-bold text-slate-200">Persona Natural con Negocio</span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Día límite fijado: <strong className="text-white font-black">Día {sunatRuc10.dayLimit} de cada mes</strong> ({sunatRuc10.targetDateStr})
+              </p>
+            </div>
+            <div className="text-right">
+              {sunatRuc10.isToday ? (
+                <span className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded-full text-xs font-black animate-bounce inline-block">
+                  ¡VENCE HOY!
+                </span>
+              ) : sunatRuc10.isClose ? (
+                <span className="px-3 py-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full text-xs font-black animate-pulse inline-block">
+                  {sunatRuc10.daysLeft} día(s) restantes
+                </span>
+              ) : (
+                <span className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full text-xs font-black inline-block">
+                  {sunatRuc10.daysLeft} día(s) restantes
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Card RUC 20 */}
+          <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800/90 flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="warning" size="sm" className="font-black">RUC 20</Badge>
+                <span className="text-xs font-bold text-slate-200">Empresa ({config.ruc20TaxRegime || 'RMT'})</span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Día límite fijado: <strong className="text-white font-black">Día {sunatRuc20.dayLimit} de cada mes</strong> ({sunatRuc20.targetDateStr})
+              </p>
+            </div>
+            <div className="text-right">
+              {sunatRuc20.isToday ? (
+                <span className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded-full text-xs font-black animate-bounce inline-block">
+                  ¡VENCE HOY!
+                </span>
+              ) : sunatRuc20.isClose ? (
+                <span className="px-3 py-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full text-xs font-black animate-pulse inline-block">
+                  {sunatRuc20.daysLeft} día(s) restantes
+                </span>
+              ) : (
+                <span className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full text-xs font-black inline-block">
+                  {sunatRuc20.daysLeft} día(s) restantes
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Main Section: 7-Day Chart + Recent Activity Feed ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Cols: 7-Day Sales Trend & Recent Sales */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Chart Card */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-emerald-600" />
+                  Tendencia de Ventas (Últimos 7 Días)
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">Facturación diaria consolidada en soles</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSafeNavigate('tablero-estadistico', 'tablero_estadistico', ['ADMIN', 'CAJA', 'RRHH', 'USER'])}
+                rightIcon={<ArrowUpRight className="w-3.5 h-3.5" />}
+              >
+                Ver Todo en Tablero Estadístico
+              </Button>
+            </div>
+
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weeklyTrendData}>
+                  <defs>
+                    <linearGradient id="colorSalesWeekly" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 700 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 700 }} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                    formatter={(val: any) => [`S/ ${Number(val).toLocaleString()}`, 'Ventas']}
+                  />
+                  <Area type="monotone" dataKey="ventas" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSalesWeekly)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Recent Transactions Stream */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                Últimas Ventas Registradas
+              </h3>
+              <button
+                onClick={() => handleSafeNavigate('historial-ventas', 'sales_history', ['ADMIN', 'CAJA'])}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                Ver Historial <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {recentSales.length === 0 ? (
+              <p className="text-xs text-slate-400 font-medium text-center py-6">No hay transacciones registradas aún</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {recentSales.map((sale: any) => (
+                  <div key={sale.id} className="py-3 flex justify-between items-center text-xs">
+                    <div className="space-y-0.5">
+                      <p className="font-extrabold text-slate-900">{sale.entityName || sale.entity_name || 'Cliente Varios'}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">
+                        Doc: {sale.documentType || 'BV'} {sale.documentNumber || sale.document_number || '001'} • {(sale.date || sale.created_at || '').split('T')[0]}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-slate-900">{formatPEN(Number(sale.totalAmount || sale.total_amount || 0))}</p>
+                      <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase">
+                        {sale.sunatStatus || 'ACEPTADO'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Col: Low Stock Panel & Fiscal Summary */}
+        <div className="space-y-6">
+          {/* Low Stock Panel */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider flex items-center gap-2">
+                <Package className="w-5 h-5 text-amber-600" />
+                Stock en Alerta
+              </h3>
+              <Badge variant={criticalProducts.length > 0 ? 'warning' : 'success'} size="sm">
+                {criticalProducts.length} Ítems
+              </Badge>
+            </div>
+
+            {criticalProducts.length === 0 ? (
+              <p className="text-xs text-emerald-700 font-bold bg-emerald-50 p-4 rounded-2xl text-center">
+                ✓ Todo el inventario tiene stock suficiente
+              </p>
+            ) : (
+              <div className="space-y-3 text-xs">
+                {criticalProducts.map((prod: any) => (
+                  <div key={prod.id} className="p-3 bg-amber-50/60 rounded-2xl border border-amber-100 flex justify-between items-center">
+                    <div>
+                      <p className="font-extrabold text-slate-900">{prod.name}</p>
+                      <p className="text-[10px] font-bold text-slate-500">{prod.category || 'General'}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="px-2.5 py-1 rounded-xl bg-amber-500 text-white font-black text-xs">
+                        Stock: {prod.stock || 0}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              variant="outline"
+              fullWidth
+              size="sm"
+              onClick={() => handleSafeNavigate('inventario', 'inventory', ['ADMIN', 'USER', 'CAJA'])}
+            >
+              Ir a Gestión de Inventario
+            </Button>
+          </div>
+
+          {/* Corporate Summary Card */}
+          <div className="bg-slate-950 text-white rounded-3xl p-6 border border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-emerald-400" />
+              <h3 className="font-black text-sm uppercase tracking-wider text-white">Ficha de la Empresa</h3>
+            </div>
+
+            <div className="space-y-2 text-xs border-t border-slate-800 pt-3">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Razón Social:</span>
+                <span className="font-bold text-slate-200">{config.companyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">RUC:</span>
+                <span className="font-bold text-slate-200">{config.companyRuc}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Régimen SUNAT:</span>
+                <span className="font-bold text-emerald-400">{config.ruc20TaxRegime}</span>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              fullWidth
+              onClick={() => handleSafeNavigate('tablero-estadistico', 'tablero_estadistico', ['ADMIN', 'CAJA', 'RRHH', 'USER'])}
+              leftIcon={<BarChart3 className="w-4 h-4" />}
+            >
+              Abrir Tablero Estadístico
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
+
+export default Dashboard;

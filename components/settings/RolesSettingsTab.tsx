@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppConfig, AppModule, PermissionSet } from '../../types';
-import { Plus, Trash2, Fingerprint, ChevronRight, Lock, Eye, Pencil } from 'lucide-react';
+import { Plus, Trash2, Fingerprint, ChevronRight, Lock, Eye, Pencil, RefreshCw } from 'lucide-react';
 import { Button, Modal, Input } from '../ui';
 
 interface RolesSettingsTabProps {
@@ -15,7 +15,8 @@ interface RolesSettingsTabProps {
   handleDeleteRole: (idx: number, e: React.MouseEvent) => Promise<void> | void;
   handleTogglePermission: (module: AppModule, action: keyof PermissionSet) => void;
   handleSaveConfig: () => Promise<void> | void;
-  modulesList: { id: AppModule; label: string }[];
+  handleSyncModules?: () => Promise<void> | void;
+  modulesList: { id: AppModule; label: string; section?: string }[];
 }
 
 export const RolesSettingsTab: React.FC<RolesSettingsTabProps> = ({
@@ -30,6 +31,7 @@ export const RolesSettingsTab: React.FC<RolesSettingsTabProps> = ({
   handleDeleteRole,
   handleTogglePermission,
   handleSaveConfig,
+  handleSyncModules,
   modulesList,
 }) => {
   const selectedRole = config.roleConfigs[selectedRoleIndex] || config.roleConfigs[0];
@@ -102,13 +104,26 @@ export const RolesSettingsTab: React.FC<RolesSettingsTabProps> = ({
                 Privilegios para: <span className="text-emerald-600 font-black">{selectedRole?.label || 'Sin Selección'}</span>
               </p>
             </div>
-            <Button
-              variant="secondary"
-              onClick={handleSaveConfig}
-              leftIcon={<Lock className="w-4 h-4 text-emerald-400" />}
-            >
-              Guardar Matriz
-            </Button>
+            <div className="flex items-center gap-2">
+              {handleSyncModules && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSyncModules}
+                  leftIcon={<RefreshCw className="w-3.5 h-3.5 text-blue-500" />}
+                  title="Sincronizar módulos nuevos en todos los roles existentes"
+                >
+                  Sincronizar Módulos
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                onClick={handleSaveConfig}
+                leftIcon={<Lock className="w-4 h-4 text-emerald-400" />}
+              >
+                Guardar Matriz
+              </Button>
+            </div>
           </div>
 
           <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden shadow-inner">
@@ -122,51 +137,64 @@ export const RolesSettingsTab: React.FC<RolesSettingsTabProps> = ({
                   <th className="px-4 py-4 text-center">Eliminar (D)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
-                {modulesList.map((m) => {
-                  const rolePermissions = selectedRole?.permissions || {};
-                  const perms = rolePermissions[m.id] || { read: false, create: false, update: false, delete: false };
-
-                  return (
-                    <tr key={m.id} className="hover:bg-white transition-colors">
-                      <td className="px-6 py-4 text-xs font-bold text-slate-700 uppercase">
-                        {m.label}
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <PermissionToggle
-                          active={perms.read}
-                          onClick={() => handleTogglePermission(m.id, 'read')}
-                          color="bg-emerald-500"
-                          icon={<Eye className="w-3.5 h-3.5" />}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <PermissionToggle
-                          active={perms.create}
-                          onClick={() => handleTogglePermission(m.id, 'create')}
-                          color="bg-blue-500"
-                          icon={<Plus className="w-3.5 h-3.5" />}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <PermissionToggle
-                          active={perms.update}
-                          onClick={() => handleTogglePermission(m.id, 'update')}
-                          color="bg-purple-500"
-                          icon={<Pencil className="w-3.5 h-3.5" />}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <PermissionToggle
-                          active={perms.delete}
-                          onClick={() => handleTogglePermission(m.id, 'delete')}
-                          color="bg-red-500"
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
+              <tbody className="divide-y divide-slate-100">
+                {(() => {
+                  let lastSection = '';
+                  return modulesList.map((m) => {
+                    const rolePermissions = selectedRole?.permissions || {};
+                    const perms = rolePermissions[m.id] || { read: false, create: false, update: false, delete: false };
+                    const showSectionHeader = m.section && m.section !== lastSection;
+                    if (m.section) lastSection = m.section;
+                    return (
+                      <>
+                        {showSectionHeader && (
+                          <tr key={`section-${m.section}`} className="bg-slate-100">
+                            <td colSpan={5} className="px-6 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest border-t border-slate-200">
+                              {m.section}
+                            </td>
+                          </tr>
+                        )}
+                        <tr key={m.id} className="hover:bg-white transition-colors">
+                          <td className="px-6 py-3.5 text-xs font-bold text-slate-700 pl-10">
+                            {m.label}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <PermissionToggle
+                              active={perms.read}
+                              onClick={() => handleTogglePermission(m.id, 'read')}
+                              color="bg-emerald-500"
+                              icon={<Eye className="w-3.5 h-3.5" />}
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <PermissionToggle
+                              active={perms.create}
+                              onClick={() => handleTogglePermission(m.id, 'create')}
+                              color="bg-blue-500"
+                              icon={<Plus className="w-3.5 h-3.5" />}
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <PermissionToggle
+                              active={perms.update}
+                              onClick={() => handleTogglePermission(m.id, 'update')}
+                              color="bg-purple-500"
+                              icon={<Pencil className="w-3.5 h-3.5" />}
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <PermissionToggle
+                              active={perms.delete}
+                              onClick={() => handleTogglePermission(m.id, 'delete')}
+                              color="bg-red-500"
+                              icon={<Trash2 className="w-3.5 h-3.5" />}
+                            />
+                          </td>
+                        </tr>
+                      </>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>

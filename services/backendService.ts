@@ -108,6 +108,7 @@ export const BackendService = {
         pensionSystem: e.pension_system,
         hasChildren: e.has_children,
         role: role || e.role,
+        photoUrl: e.photo_url || undefined,
         token: token, // Guardamos el token en la sesión
       };
       localStorage.setItem(LS_SESSION, JSON.stringify(user));
@@ -210,8 +211,29 @@ export const BackendService = {
         pensionSystem: e.pension_system,
         hasChildren: e.has_children,
         role: e.role,
+        photoUrl: e.photo_url || undefined,
+        isApproved: e.is_approved !== false,
       }));
     }, forceRefresh);
+  },
+
+  async registerPublicEmployee(payload: Partial<Employee> & { password: string }): Promise<{ message: string; is_approved: boolean }> {
+    const body: any = {
+      full_name: payload.fullName,
+      doc_number: payload.docNumber,
+      password: payload.password,
+      base_salary: payload.baseSalary || 1130,
+      pension_system: payload.pensionSystem || 'ONP',
+      has_children: payload.hasChildren || false,
+      role: 'USER',
+      is_approved: false
+    };
+    if (payload.phone) body.phone = payload.phone;
+    if (payload.email) body.email = payload.email;
+    if (payload.address) body.address = payload.address;
+
+    const res = await api.post('/employees/public-register', body);
+    return res.data;
   },
 
   async createEmployee(payload: Partial<Employee> & { password: string }): Promise<Employee> {
@@ -223,6 +245,7 @@ export const BackendService = {
       pension_system: payload.pensionSystem,
       has_children: payload.hasChildren,
       role: payload.role,
+      is_approved: payload.isApproved !== undefined ? payload.isApproved : true,
     };
     if (payload.phone) body.phone = payload.phone;
     if (payload.email) body.email = payload.email;
@@ -241,8 +264,11 @@ export const BackendService = {
       pensionSystem: e.pension_system,
       hasChildren: e.has_children,
       role: e.role,
+      photoUrl: e.photo_url || undefined,
+      isApproved: e.is_approved !== false,
     };
   },
+
   async updateEmployee(id: string, payload: Partial<Employee>): Promise<Employee> {
     const body: any = {
       full_name: payload.fullName,
@@ -253,6 +279,7 @@ export const BackendService = {
       pension_system: payload.pensionSystem,
       has_children: payload.hasChildren,
       role: payload.role,
+      is_approved: payload.isApproved,
     };
     const res = await api.put(`/employees/${id}`, body);
     clearCache('employees');
@@ -268,9 +295,10 @@ export const BackendService = {
       pensionSystem: e.pension_system,
       hasChildren: e.has_children,
       role: e.role,
+      photoUrl: e.photo_url || undefined,
+      isApproved: e.is_approved !== false,
     };
   },
-
   async changeEmployeePassword(id: string, oldPassword: string, newPassword: string): Promise<{ message: string }> {
     const res = await api.put(`/employees/${id}/password`, {
       old_password: oldPassword,
@@ -563,6 +591,39 @@ export const BackendService = {
     return res.data as { url: string; filename: string; doc_kind?: string };
   },
 
+  async downloadUploadsBackup() {
+    const baseURL = api.defaults.baseURL || '';
+    let token = '';
+    try {
+      const raw = localStorage.getItem('mype_session');
+      if (raw) token = JSON.parse(raw)?.token || '';
+    } catch {}
+
+    const url = `${baseURL}/config/backup-uploads`;
+    const res = await fetch(url, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al generar la copia de respaldo de archivos');
+    }
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `backup_uploads_${ts}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  },
+
   async getSuppliers(forceRefresh = false): Promise<Supplier[]> {
     return getCached('suppliers', async () => {
       const res = await api.get('/suppliers');
@@ -829,6 +890,20 @@ export const BackendService = {
     const res = await api.delete(`/roles/${id}`);
     clearCache('roles');
     return res.data;
+  },
+  async syncRoleModules() {
+    const res = await api.post('/roles/sync-modules');
+    clearCache('roles');
+    return res.data;
+  },
+  async uploadEmployeePhoto(empId: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post(`/employees/${empId}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    clearCache(`employee_${empId}`);
+    return res.data as { photo_url: string };
   },
 
   // Catalog Products API

@@ -172,6 +172,16 @@ export const SalesModule: React.FC = () => {
 
 
 
+    const handleSaveCustomerNote = async (newNote: string) => {
+        if (!customerNote?.id) return;
+        try {
+            await BackendService.updateCustomer(customerNote.id, { note: newNote });
+            setCustomerNote(prev => prev ? { ...prev, note: newNote } : null);
+        } catch {
+            showAlert('Error al actualizar nota del cliente', 'error');
+        }
+    };
+
     const handleDeleteCustomerNote = async () => {
         if (!customerNote?.id) return;
         setIsDeletingCustomerNote(true);
@@ -324,10 +334,12 @@ const totalBaseAmount = transactionItems.reduce((acc, item) => acc + item.totalB
                 open={Boolean(customerNote?.note)}
                 customerName={customerNote?.fullName || clientName}
                 docNumber={customerNote?.docNumber || clientDoc}
+                customerId={customerNote?.id}
                 note={customerNote?.note || ''}
                 deleting={isDeletingCustomerNote}
                 onClose={() => setCustomerNote(null)}
                 onDelete={handleDeleteCustomerNote}
+                onSaveNote={handleSaveCustomerNote}
             />
             <div className="lg:col-span-2 space-y-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">

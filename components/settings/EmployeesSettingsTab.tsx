@@ -3,7 +3,7 @@ import { Employee, PensionSystem, UserRole, CivilStatus } from '../../types';
 import { DataService } from '../../services/dataService';
 import { BackendService } from '../../services/backendService';
 import { fetchDni } from '../../services/dniService';
-import { Phone, MapPin, Pencil, Trash2, Search, Plus, Key } from 'lucide-react';
+import { Phone, MapPin, Pencil, Trash2, Search, Plus, Key, UserCheck, Clock, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { Button, Input, Modal, DataTable, Column, Badge } from '../ui';
 import { useAlert } from '../ui/Alert';
 
@@ -33,7 +33,28 @@ export const EmployeesSettingsTab: React.FC<EmployeesSettingsTabProps> = ({
   isProcessing,
 }) => {
   const toast = useAlert();
+  const config = DataService.getConfig();
   const isFormOpen = showAddForm || !!editingEmployee;
+
+  const [approvingEmployee, setApprovingEmployee] = useState<Employee | null>(null);
+  const [selectedRole, setSelectedRole] = useState<UserRole>('VENDEDOR');
+
+  const pendingEmployees = employees.filter(e => e.isApproved === false);
+
+  const handleConfirmApproval = async () => {
+    if (!approvingEmployee) return;
+    try {
+      await onSaveEmployee({
+        ...approvingEmployee,
+        isApproved: true,
+        role: selectedRole
+      });
+      toast.success(`Acceso aprobado con éxito para ${approvingEmployee.fullName} (Rol: ${selectedRole})`);
+      setApprovingEmployee(null);
+    } catch (err: any) {
+      toast.error('Error al aprobar empleado: ' + (err.message || 'Error desconocido'));
+    }
+  };
 
   const columns: Column<Employee>[] = [
     {
@@ -55,7 +76,7 @@ export const EmployeesSettingsTab: React.FC<EmployeesSettingsTabProps> = ({
             <Phone className="w-3 h-3 text-slate-400" /> {e.phone || '—'}
           </div>
           <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase mt-0.5">
-            <MapPin className="w-3 h-3 text-slate-300" /> {e.district || '—'}, {e.department || '—'}
+            <MapPin className="w-3 h-3 text-slate-300" /> {e.email || '—'}
           </div>
         </div>
       ),
@@ -72,10 +93,46 @@ export const EmployeesSettingsTab: React.FC<EmployeesSettingsTabProps> = ({
         </div>
       ),
     },
+    {
+      key: 'estado_acceso',
+      header: 'Estado Acceso',
+      render: (_, e) => (
+        <div>
+          {e.isApproved !== false ? (
+            <Badge variant="success" size="sm" className="flex items-center gap-1 w-fit">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> APROBADO
+            </Badge>
+          ) : (
+            <Badge variant="warning" size="sm" className="flex items-center gap-1 animate-pulse w-fit">
+              <Clock className="w-3 h-3 text-amber-600" /> PENDIENTE APROBACIÓN
+            </Badge>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
     <div className="p-6 md:p-8 space-y-6 animate-fade-in">
+      {/* Pending Approvals Alert Banner */}
+      {pendingEmployees.length > 0 && (
+        <div className="bg-amber-50 border-2 border-amber-200 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-500 text-white rounded-xl">
+              <Clock className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight">
+                {pendingEmployees.length} Solicitud(es) de Registro Pendiente(s)
+              </h4>
+              <p className="text-xs text-slate-600 font-medium">
+                Nuevos colaboradores se han registrado en la plataforma y requieren aprobación explícita de un Administrador para ingresar.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={employees}
@@ -88,7 +145,18 @@ export const EmployeesSettingsTab: React.FC<EmployeesSettingsTabProps> = ({
           </Button>
         }
         rowActions={(e) => (
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
+            {e.isApproved === false && (
+              <Button
+                variant="primary"
+                size="xs"
+                onClick={() => { setSelectedRole('VENDEDOR'); setApprovingEmployee(e); }}
+                leftIcon={<UserCheck className="w-3.5 h-3.5" />}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-black"
+              >
+                Aprobar Acceso
+              </Button>
+            )}
             <Button variant="ghost" size="xs" onClick={() => setEditingEmployee(e)}>
               <Pencil className="w-4 h-4 text-blue-600" />
             </Button>
@@ -98,6 +166,52 @@ export const EmployeesSettingsTab: React.FC<EmployeesSettingsTabProps> = ({
           </div>
         )}
       />
+
+      {/* Approval & Role Assignment Modal */}
+      <Modal
+        open={!!approvingEmployee}
+        onClose={() => setApprovingEmployee(null)}
+        title="Aprobar Acceso & Asignar Rol"
+        subtitle={`Otorga acceso oficial al colaborador ${approvingEmployee?.fullName || ''}`}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-3 w-full">
+            <Button variant="ghost" onClick={() => setApprovingEmployee(null)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={handleConfirmApproval} leftIcon={<UserCheck className="w-4 h-4" />}>
+              Aprobar & Guardar Rol
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 py-2 text-xs">
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+            <p className="font-extrabold text-slate-900 text-sm">{approvingEmployee?.fullName}</p>
+            <p className="text-slate-500 font-bold">DNI: {approvingEmployee?.docNumber} • Email: {approvingEmployee?.email || 'N/A'}</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+              Seleccionar Rol Oficial para el Sistema
+            </label>
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+              className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm font-bold bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 uppercase"
+            >
+              {config.roleConfigs.map((rc) => (
+                <option key={rc.role} value={rc.role}>
+                  {rc.label.toUpperCase()} ({rc.role})
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 font-medium mt-2">
+              Al aprobar, el colaborador podrá iniciar sesión en la plataforma con el DNI y contraseña registrados, sujetándose a la matriz de permisos de este rol.
+            </p>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={isFormOpen}
@@ -248,6 +362,20 @@ const EmployeeForm: React.FC<{
                       {rc.label.toUpperCase()}
                     </option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Estado de Acceso
+                </label>
+                <select
+                  value={formData.isApproved !== false ? 'approved' : 'pending'}
+                  onChange={(e) => setFormData({ ...formData, isApproved: e.target.value === 'approved' })}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 uppercase"
+                >
+                  <option value="approved">APROBADO (Permitir Ingreso)</option>
+                  <option value="pending">PENDIENTE (Bloquear Ingreso)</option>
                 </select>
               </div>
 

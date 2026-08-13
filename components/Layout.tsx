@@ -15,11 +15,13 @@ import {
   X,
   ChevronRight,
   ShieldCheck,
-  Building2
+  Building2,
+  BarChart3
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { Employee, UserRole, AppModule } from '../types';
 import { DataService } from '../services/dataService';
+import { ProfileModal } from './ProfileModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,6 +29,7 @@ interface LayoutProps {
   onTabChange: (tab: string) => void;
   currentUser: Employee;
   onLogout: () => void;
+  onUserUpdate?: (updated: Employee) => void;
 }
 
 interface NavGroup {
@@ -41,8 +44,9 @@ interface NavGroup {
   }[];
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, currentUser, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, currentUser, onLogout, onUserUpdate }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Grouped Navigation Items
   const navGroups: NavGroup[] = [
@@ -50,14 +54,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
       section: 'Principal',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'CAJA', 'RRHH', 'USER'], moduleId: 'dashboard' },
-        { id: 'clientes', label: 'Clientes y Notas', icon: Users, roles: ['ADMIN', 'CAJA', 'RRHH', 'USER'], moduleId: 'dashboard' },
+        { id: 'tablero-estadistico', label: 'Tablero Estadístico', icon: BarChart3, roles: ['ADMIN', 'CAJA', 'RRHH', 'USER'], moduleId: 'tablero_estadistico' },
+        { id: 'clientes', label: 'Clientes y Notas', icon: Users, roles: ['ADMIN', 'CAJA', 'RRHH', 'USER'], moduleId: 'clientes' },
       ]
     },
     {
       section: 'Ventas & Compras',
       items: [
         { id: 'ventas', label: 'Nueva Venta', icon: Store, roles: ['ADMIN', 'CAJA'], moduleId: 'sales' },
-        { id: 'historial-ventas', label: 'Historial Ventas', icon: History, roles: ['ADMIN', 'CAJA'], moduleId: 'sales' },
+        { id: 'historial-ventas', label: 'Historial Ventas', icon: History, roles: ['ADMIN', 'CAJA'], moduleId: 'sales_history' },
         { id: 'compras', label: 'Compras Personas (RUC 10)', icon: ShoppingCart, roles: ['ADMIN', 'USER'], moduleId: 'purchases_ruc10' },
         { id: 'compras-mayoristas', label: 'Compras Mayoristas (RUC 20)', icon: Truck, roles: ['ADMIN', 'CAJA'], moduleId: 'purchases_ruc20' },
       ]
@@ -79,8 +84,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
       section: 'Sistema & Reportes',
       items: [
         { id: 'facturacion-control', label: 'Control Facturación', icon: FileText, roles: ['ADMIN', 'CAJA'], moduleId: 'accounting' },
-        { id: 'contabilidad', label: 'Contabilidad SIRE', icon: FileText, roles: ['ADMIN'], moduleId: 'accounting' },
-        { id: 'actualizaciones', label: 'Auditoría de Datos', icon: ShieldCheck, roles: ['ADMIN'], moduleId: 'settings' },
+        { id: 'contabilidad', label: 'Contabilidad SIRE', icon: FileText, roles: ['ADMIN'], moduleId: 'accounting_sire' },
+        { id: 'actualizaciones', label: 'Auditoría de Datos', icon: ShieldCheck, roles: ['ADMIN'], moduleId: 'audit' },
         { id: 'configuracion', label: 'Configuración', icon: Settings, roles: ['ADMIN', 'RRHH'], moduleId: 'settings' },
       ]
     }
@@ -91,8 +96,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
 
   // Filter items based on permissions
   const filterItem = (item: any) => {
+    if (currentUser.role === 'ADMIN') return true;
     if (roleConfig && roleConfig.permissions && roleConfig.permissions[item.moduleId]) {
-      return roleConfig.permissions[item.moduleId].read;
+      return Boolean(roleConfig.permissions[item.moduleId].read);
     }
     return item.roles.includes(currentUser.role);
   };
@@ -197,22 +203,36 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
           ))}
         </nav>
 
-        {/* User & Company Footer */}
-        <div className="p-4 border-t border-slate-800/80 bg-slate-900/50">
-          <div className="flex items-center gap-3 mb-3 p-2 rounded-xl bg-slate-900 border border-slate-800">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black shadow-inner shrink-0 ${getRoleBadgeColor(currentUser.role)}`}>
-              {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
+        {/* Profile Button Footer */}
+        <div className="p-3 border-t border-slate-800/80">
+          <button
+            onClick={() => setProfileOpen(true)}
+            className="w-full flex items-center gap-3 p-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition-all duration-200 group active:scale-95"
+          >
+            {/* Avatar */}
+            <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-inner ring-2 ring-slate-700 group-hover:ring-emerald-500/50 transition-all">
+              {currentUser.photoUrl ? (
+                <img
+                  src={currentUser.photoUrl}
+                  alt={currentUser.fullName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className={`w-full h-full flex items-center justify-center text-xs font-black text-white ${getRoleBadgeColor(currentUser.role)}`}>
+                  {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
             </div>
-            <div className="overflow-hidden flex-1">
-              <p className="text-xs font-bold text-slate-200 truncate">{currentUser.fullName}</p>
-              <span className="inline-block text-[9px] font-black text-emerald-400 uppercase tracking-wider">
-                {currentUser.role}
-              </span>
+            <div className="overflow-hidden flex-1 text-left">
+              <p className="text-xs font-bold text-slate-200 truncate group-hover:text-white transition-colors">{currentUser.fullName}</p>
+              <span className="inline-block text-[9px] font-black text-emerald-400 uppercase tracking-wider">{currentUser.role}</span>
             </div>
-          </div>
-          <button 
+            {/* Chevron hint */}
+            <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 shrink-0 transition-colors" />
+          </button>
+          <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-red-950/60 text-slate-400 hover:text-red-400 py-2 rounded-xl text-xs font-bold border border-slate-800 hover:border-red-900/50 transition-all duration-200 active:scale-95"
+            className="mt-2 w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-red-950/60 text-slate-400 hover:text-red-400 py-2 rounded-xl text-xs font-bold border border-slate-800 hover:border-red-900/50 transition-all duration-200 active:scale-95"
           >
             <LogOut className="w-3.5 h-3.5" /> Cerrar Sesión
           </button>
@@ -266,6 +286,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
           {children}
         </div>
       </main>
+
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        currentUser={currentUser}
+        onUserUpdate={(updated) => {
+          onUserUpdate?.(updated);
+          setProfileOpen(false);
+        }}
+      />
     </div>
   );
 };

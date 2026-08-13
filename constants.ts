@@ -10,14 +10,24 @@ const ROLES_DEFAULT: UserRoleConfig[] = [
     role: 'ADMIN',
     label: 'Administrador Total',
     permissions: {
+      // Principal
       dashboard: allAccess(),
-      inventory: allAccess(),
+      tablero_estadistico: allAccess(),
+      clientes: allAccess(),
+      // Ventas & Compras
       sales: allAccess(),
+      sales_history: allAccess(),
       purchases_ruc10: allAccess(),
       purchases_ruc20: allAccess(),
+      // Operaciones
+      inventory: allAccess(),
       expenses: allAccess(),
+      // Administración
       payroll: allAccess(),
+      // Sistema & Reportes
       accounting: allAccess(),
+      accounting_sire: allAccess(),
+      audit: allAccess(),
       settings: allAccess(),
     }
   },
@@ -26,13 +36,18 @@ const ROLES_DEFAULT: UserRoleConfig[] = [
     label: 'Vendedor / Counter',
     permissions: {
       dashboard: readOnly(),
-      inventory: readOnly(),
+      tablero_estadistico: readOnly(),
+      clientes: readOnly(),
       sales: { create: true, read: true, update: false, delete: false },
+      sales_history: readOnly(),
       purchases_ruc10: noAccess(),
       purchases_ruc20: noAccess(),
+      inventory: readOnly(),
       expenses: noAccess(),
       payroll: noAccess(),
       accounting: noAccess(),
+      accounting_sire: noAccess(),
+      audit: noAccess(),
       settings: noAccess(),
     }
   },
@@ -41,13 +56,18 @@ const ROLES_DEFAULT: UserRoleConfig[] = [
     label: 'Tesorero / Caja',
     permissions: {
       dashboard: readOnly(),
-      inventory: readOnly(),
+      tablero_estadistico: readOnly(),
+      clientes: readOnly(),
       sales: { create: true, read: true, update: true, delete: false },
+      sales_history: readOnly(),
       purchases_ruc10: { create: true, read: true, update: true, delete: false },
       purchases_ruc20: { create: true, read: true, update: true, delete: false },
+      inventory: readOnly(),
       expenses: { create: true, read: true, update: true, delete: false },
       payroll: noAccess(),
       accounting: readOnly(),
+      accounting_sire: noAccess(),
+      audit: noAccess(),
       settings: noAccess(),
     }
   },
@@ -56,14 +76,19 @@ const ROLES_DEFAULT: UserRoleConfig[] = [
     label: 'Recursos Humanos',
     permissions: {
       dashboard: readOnly(),
-      inventory: noAccess(),
+      tablero_estadistico: readOnly(),
+      clientes: noAccess(),
       sales: noAccess(),
+      sales_history: noAccess(),
       purchases_ruc10: noAccess(),
       purchases_ruc20: noAccess(),
-      expenses: { create: true, read: true, update: false, delete: false }, // Gastos de personal
+      inventory: noAccess(),
+      expenses: { create: true, read: true, update: false, delete: false },
       payroll: allAccess(),
       accounting: noAccess(),
-      settings: { create: false, read: true, update: true, delete: false }, // Solo editar trabajadores
+      accounting_sire: noAccess(),
+      audit: noAccess(),
+      settings: { create: false, read: true, update: true, delete: false },
     }
   },
   {
@@ -71,13 +96,18 @@ const ROLES_DEFAULT: UserRoleConfig[] = [
     label: 'Usuario Estándar',
     permissions: {
       dashboard: readOnly(),
-      inventory: readOnly(),
+      tablero_estadistico: readOnly(),
+      clientes: readOnly(),
       sales: noAccess(),
-      purchases_ruc10: noAccess(),
+      sales_history: noAccess(),
+      purchases_ruc10: { create: true, read: true, update: true, delete: false },
       purchases_ruc20: noAccess(),
+      inventory: readOnly(),
       expenses: noAccess(),
       payroll: noAccess(),
       accounting: noAccess(),
+      accounting_sire: noAccess(),
+      audit: noAccess(),
       settings: noAccess(),
     }
   }

@@ -85,15 +85,25 @@ export interface PermissionSet {
   delete: boolean;
 }
 
-export type AppModule = 
-  | 'dashboard' 
-  | 'inventory' 
-  | 'sales' 
-  | 'purchases_ruc10' 
-  | 'purchases_ruc20' 
-  | 'expenses' 
-  | 'payroll' 
-  | 'accounting' 
+export type AppModule =
+  // Principal
+  | 'dashboard'
+  | 'tablero_estadistico'
+  | 'clientes'
+  // Ventas & Compras
+  | 'sales'
+  | 'sales_history'
+  | 'purchases_ruc10'
+  | 'purchases_ruc20'
+  // Operaciones
+  | 'inventory'
+  | 'expenses'
+  // Administración
+  | 'payroll'
+  // Sistema & Reportes
+  | 'accounting'
+  | 'accounting_sire'
+  | 'audit'
   | 'settings';
 
 export interface UserRoleConfig {
@@ -302,6 +312,8 @@ export interface Employee {
   jobTitle?: string;
   entryDate?: string;
   cuspp?: string;
+  photoUrl?: string;
+  isApproved?: boolean;
 }
 
 export interface WholesalePurchaseEntry {

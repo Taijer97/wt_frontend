@@ -42,9 +42,11 @@ export const DataService = {
   checkPermission: (module: AppModule, action: keyof PermissionSet): boolean => {
     const user = DataService.getCurrentUser();
     if (!user) return false;
+    if (user.role === 'ADMIN') return true;
     const config = DataService.getConfig();
-    const roleCfg = config.roleConfigs.find(r => r.role === user.role);
-    return roleCfg ? roleCfg.permissions[module][action] : false;
+    const roleCfg = config.roleConfigs?.find((r) => r.role === user.role);
+    if (!roleCfg || !roleCfg.permissions || !roleCfg.permissions[module]) return false;
+    return Boolean(roleCfg.permissions[module][action]);
   },
   getConfig: (): AppConfig => {
     const saved = localStorage.getItem(LS_KEYS.CONFIG);

@@ -118,13 +118,14 @@ export const SettingsModule: React.FC = () => {
       const saved = await BackendService.updateConfig(payload);
       DataService.saveConfig(saved);
 
-      const currentRole = config.roleConfigs[selectedRoleIndex];
-      if (currentRole && currentRole.id) {
-        await BackendService.updateRole(String(currentRole.id), {
-          name: currentRole.role,
-          label: currentRole.label,
-          permissions: currentRole.permissions,
-        });
+      for (const r of config.roleConfigs) {
+        if (r && r.id) {
+          await BackendService.updateRole(String(r.id), {
+            name: r.role,
+            label: r.label,
+            permissions: r.permissions,
+          });
+        }
       }
 
       refreshData();
@@ -292,25 +293,39 @@ export const SettingsModule: React.FC = () => {
   const handleSaveEmployee = async (e: Employee) => {
     setIsProcessing(true);
     try {
-      if (editingEmployee) {
+      const isExisting = employees.some(emp => String(emp.id) === String(e.id));
+      if (isExisting) {
         await BackendService.updateEmployee(e.id, {
-          fullName: e.fullName, phone: e.phone, email: e.email, address: e.address,
-          baseSalary: e.baseSalary, pensionSystem: e.pensionSystem, hasChildren: e.hasChildren, role: e.role,
+          fullName: e.fullName,
+          phone: e.phone,
+          email: e.email,
+          address: e.address,
+          baseSalary: e.baseSalary,
+          pensionSystem: e.pensionSystem,
+          hasChildren: e.hasChildren,
+          role: e.role,
+          isApproved: e.isApproved,
         });
       } else {
         await BackendService.createEmployee({
-          fullName: e.fullName, docNumber: e.docNumber, phone: e.phone, email: e.email, address: e.address,
-          baseSalary: e.baseSalary, pensionSystem: e.pensionSystem, hasChildren: e.hasChildren, role: e.role,
+          fullName: e.fullName,
+          docNumber: e.docNumber,
+          phone: e.phone,
+          email: e.email,
+          address: e.address,
+          baseSalary: e.baseSalary,
+          pensionSystem: e.pensionSystem,
+          hasChildren: e.hasChildren,
+          role: e.role,
           password: e.password || '123456',
+          isApproved: e.isApproved !== undefined ? e.isApproved : true,
         });
       }
       setEditingEmployee(null); setShowAddForm(false); await refreshData();
-      alert.success('Colaborador Guardado');
-    } catch {
-      DataService.saveEmployee(e);
-      setEditingEmployee(null); setShowAddForm(false);
-      await refreshData();
-      alert.success('Guardado local (offline)');
+      alert.success('Colaborador Guardado Correctamente');
+    } catch (err: any) {
+      const errorDetail = err?.response?.data?.detail || err?.message || 'Error al guardar colaborador';
+      alert.error(errorDetail);
     } finally {
       setIsProcessing(false);
     }
@@ -337,16 +352,26 @@ export const SettingsModule: React.FC = () => {
     });
   };
 
-  const modulesList: { id: AppModule; label: string }[] = [
-    { id: 'dashboard', label: 'Tablero Principal' },
-    { id: 'inventory', label: 'Inventario y Transferencias' },
-    { id: 'sales', label: 'Ventas y Facturación' },
-    { id: 'purchases_ruc10', label: 'Compras RUC 10 (Persona)' },
-    { id: 'purchases_ruc20', label: 'Compras RUC 20 (Empresa)' },
-    { id: 'expenses', label: 'Gastos Operativos' },
-    { id: 'payroll', label: 'Planillas y RRHH' },
-    { id: 'accounting', label: 'SIRE y Contabilidad' },
-    { id: 'settings', label: 'Configuración de Sistema' },
+  const modulesList: { id: AppModule; label: string; section?: string }[] = [
+    // Principal
+    { id: 'dashboard',           label: 'Dashboard Bienvenida',       section: 'Principal' },
+    { id: 'tablero_estadistico', label: 'Tablero Estadístico (SUNAT)', section: 'Principal' },
+    { id: 'clientes',            label: 'Clientes y Notas',           section: 'Principal' },
+    // Ventas & Compras
+    { id: 'sales',           label: 'Nueva Venta',                section: 'Ventas & Compras' },
+    { id: 'sales_history',   label: 'Historial Ventas',           section: 'Ventas & Compras' },
+    { id: 'purchases_ruc10', label: 'Compras Personas (RUC 10)',  section: 'Ventas & Compras' },
+    { id: 'purchases_ruc20', label: 'Compras Mayoristas (RUC 20)', section: 'Ventas & Compras' },
+    // Operaciones
+    { id: 'inventory',       label: 'Inventario & Transf.',       section: 'Operaciones' },
+    { id: 'expenses',        label: 'Gastos & Costos',            section: 'Operaciones' },
+    // Administración
+    { id: 'payroll',         label: 'Planilla & RRHH',            section: 'Administración' },
+    // Sistema & Reportes
+    { id: 'accounting',      label: 'Control Facturación',        section: 'Sistema & Reportes' },
+    { id: 'accounting_sire', label: 'Contabilidad SIRE',          section: 'Sistema & Reportes' },
+    { id: 'audit',           label: 'Auditoría de Datos',         section: 'Sistema & Reportes' },
+    { id: 'settings',        label: 'Configuración de Sistema',   section: 'Sistema & Reportes' },
   ];
 
   const tabItems = [
@@ -446,6 +471,18 @@ export const SettingsModule: React.FC = () => {
             handleDeleteRole={handleDeleteRole}
             handleTogglePermission={handleTogglePermission}
             handleSaveConfig={handleSaveConfig}
+            handleSyncModules={async () => {
+              setIsProcessing(true);
+              try {
+                const result = await BackendService.syncRoleModules();
+                await refreshData();
+                alert.success(`Módulos sincronizados: ${result.inserted} nuevos permisos registrados.`);
+              } catch {
+                alert.error('Error al sincronizar módulos. Intenta reiniciar el servidor backend.');
+              } finally {
+                setIsProcessing(false);
+              }
+            }}
             modulesList={modulesList}
           />
         )}

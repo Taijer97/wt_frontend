@@ -167,6 +167,16 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
     } catch {}
   };
 
+  const handleSaveCustomerNote = async (newNote: string) => {
+    if (!customerNote?.id) return;
+    try {
+      await BackendService.updateCustomer(customerNote.id, { note: newNote });
+      setCustomerNote(prev => (prev ? { ...prev, note: newNote } : null));
+    } catch {
+      showAlert('Error al actualizar nota del cliente', 'error');
+    }
+  };
+
   const handleDeleteCustomerNote = async () => {
     if (!customerNote?.id) return;
     setIsDeletingCustomerNote(true);
@@ -218,7 +228,7 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
       setShowDuplicateWarning(false);
       onSuccess();
     } catch {
-      showAlert('Error al guardar en servidor', 'error');
+      showAlert('Error al registrar la compra', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -226,21 +236,33 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentSerial = formData.serie.trim().toUpperCase();
-    if (currentSerial) {
+    if (!formData.dni || !formData.nombre) {
+      showAlert('Ingrese DNI y Nombre del Vendedor', 'error');
+      return;
+    }
+    if (!formData.serie) {
+      showAlert('Ingrese la Serie o IMEI del Equipo', 'error');
+      return;
+    }
+    if (!formData.precioPactado || Number(formData.precioPactado) <= 0) {
+      showAlert('Ingrese un Precio Pactado válido', 'error');
+      return;
+    }
+
+    // Verificar si el número de serie ya fue registrado anteriormente
+    if (formData.serie && formData.serie.trim()) {
       try {
-        const page = await BackendService.getPurchasesPaged({ type: 'RUC10', q: currentSerial, limit: 50, offset: 0 }, true);
-        const items = (page?.items || []) as any[];
-        const matches = items.filter((p: any) => String(p?.product_serial || '').trim().toUpperCase() === currentSerial);
-        if (matches.length > 0) {
-          const currentSupplierId = String(formData.supplierId || '').trim();
-          const sameOriginStore = matches.some((p: any) => String(p?.supplier_id || '').trim() === currentSupplierId);
-          if (sameOriginStore) {
-            showAlert('Serie repetida en la misma tienda de origen. Cambie la tienda de origen para poder continuar.', 'error');
+        const existRes = await BackendService.getPurchasesPaged({ q: formData.serie.trim(), limit: 1, offset: 0 }, true);
+        if (existRes && existRes.items && existRes.items.length > 0) {
+          const match = existRes.items.find((p: any) =>
+            (p.product_serial || '').toUpperCase() === formData.serie.trim().toUpperCase() ||
+            (p.document_number || '').toUpperCase() === formData.serie.trim().toUpperCase() ||
+            (p.items || []).some((it: any) => (it.serial || '').toUpperCase() === formData.serie.trim().toUpperCase())
+          );
+          if (match) {
+            setShowDuplicateWarning(true);
             return;
           }
-          setShowDuplicateWarning(true);
-          return;
         }
       } catch {}
     }
@@ -253,10 +275,12 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
         open={Boolean(customerNote?.note)}
         customerName={customerNote?.fullName}
         docNumber={customerNote?.docNumber}
+        customerId={customerNote?.id}
         note={customerNote?.note || ''}
         deleting={isDeletingCustomerNote}
         onClose={() => setCustomerNote(null)}
         onDelete={handleDeleteCustomerNote}
+        onSaveNote={handleSaveCustomerNote}
       />
 
       {/* Progress Selector */}

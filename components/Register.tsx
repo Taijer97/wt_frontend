@@ -39,7 +39,7 @@ export const Register: React.FC<RegisterProps> = ({ onBack }) => {
     }
 
     try {
-      await BackendService.createEmployee({
+      await BackendService.registerPublicEmployee({
         fullName: formData.fullName,
         docNumber: formData.docNumber,
         phone: formData.phone,
@@ -59,15 +59,23 @@ export const Register: React.FC<RegisterProps> = ({ onBack }) => {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-xl shadow-xl max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-green-600" />
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full text-center space-y-4">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
+            <CheckCircle className="w-9 h-9" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Registro Exitoso!</h2>
-          <p className="text-gray-500 mb-6">Tu cuenta ha sido creada. Por defecto tienes rol de <strong>USUARIO</strong>. Contacta al administrador si necesitas mayores privilegios.</p>
-          <button onClick={onBack} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800">
-            Volver al Login
+          <h2 className="text-2xl font-black text-slate-900">¡Registro Exitoso!</h2>
+          <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs text-amber-900 font-medium space-y-2 text-left">
+            <p className="font-extrabold flex items-center gap-1.5 text-amber-800">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Pendiente de Aprobación por Administrador
+            </p>
+            <p>
+              Por motivos de seguridad, tu cuenta ha sido registrada pero requiere que un <strong>Administrador</strong> apruebe tu acceso y te asigne tu rol oficial antes de poder ingresar al sistema.
+            </p>
+          </div>
+          <button onClick={onBack} className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all text-sm">
+            Volver al Inicio de Sesión
           </button>
         </div>
       </div>

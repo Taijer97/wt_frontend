@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AppConfig, TaxRegime } from '../../types';
-import { Building, Calculator, Scale, CalendarClock } from 'lucide-react';
-import { Input, Button, Card } from '../ui';
+import { Building, Calculator, Scale, CalendarClock, FolderArchive, Download } from 'lucide-react';
+import { Input, Button, Card, useAlert } from '../ui';
+import { BackendService } from '../../services/backendService';
 
 interface GeneralSettingsTabProps {
   config: AppConfig;
@@ -18,6 +19,21 @@ export const GeneralSettingsTab: React.FC<GeneralSettingsTabProps> = ({
   isProcessing,
   onRegimeChange,
 }) => {
+  const alert = useAlert();
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
+
+  const handleDownloadBackup = async () => {
+    try {
+      setIsDownloadingBackup(true);
+      await BackendService.downloadUploadsBackup();
+      alert.success('Copia de respaldo (.ZIP) generada y descargada correctamente');
+    } catch (err: any) {
+      alert.error(err?.message || 'Error al generar copia de respaldo de archivos');
+    } finally {
+      setIsDownloadingBackup(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-8 space-y-8 animate-fade-in">
       {/* SECCIÓN 1: IDENTIDAD Y VARIABLES */}
@@ -185,6 +201,31 @@ export const GeneralSettingsTab: React.FC<GeneralSettingsTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* SECCIÓN 3: RESPALDO DE ARCHIVOS UPLOADS */}
+      <Card padding="md" className="bg-blue-50/60 border-2 border-blue-200 rounded-3xl">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-black text-blue-900 uppercase flex items-center gap-2 tracking-wide">
+              <FolderArchive className="w-5 h-5 text-blue-600" />
+              Respaldo General de Archivos Adjuntos (Uploads)
+            </h3>
+            <p className="text-xs text-blue-700 font-bold">
+              Exporta y descarga una copia de seguridad en formato comprimido (.ZIP) con todos los vouchers, contratos, comprobantes y sustentaciones almacenadas en la carpeta <code className="bg-blue-100 px-1.5 py-0.5 rounded font-mono text-[11px] text-blue-950">uploads/</code>.
+            </p>
+          </div>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleDownloadBackup}
+            isLoading={isDownloadingBackup}
+            leftIcon={<Download className="w-4 h-4 text-white" />}
+            className="bg-blue-700 hover:bg-blue-800 text-white font-extrabold uppercase text-xs shadow-md shadow-blue-200 shrink-0 cursor-pointer"
+          >
+            {isDownloadingBackup ? 'Generando ZIP...' : 'Exportar Copia de Respaldo (.ZIP)'}
+          </Button>
+        </div>
+      </Card>
 
       <div className="pt-4 border-t flex justify-end">
         <Button 
