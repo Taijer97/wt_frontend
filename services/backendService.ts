@@ -374,8 +374,8 @@ export const BackendService = {
     };
   },
 
-  async deleteProduct(id: string) {
-    const res = await api.delete(`/products/${id}`);
+  async deleteProduct(id: string, force = false) {
+    const res = await api.delete(`/products/${id}${force ? '?force=true' : ''}`);
     clearCache('products');
     clearCache('purchases');
     window.dispatchEvent(new CustomEvent('wasitech_product_change'));

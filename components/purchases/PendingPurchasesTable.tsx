@@ -136,24 +136,7 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
       }
 
       const totalCost = selected.priceAgreed || 0;
-      await BackendService.createProduct({
-        category: selected.productType || '',
-        brand: selected.productBrand || '',
-        model: selected.productModel || '',
-        serialNumber: selected.productSerial || selected.documentNumber || '',
-        idType: (selected.productIdType as any) || 'SERIE',
-        condition: (selected.productCondition as any) || 'USADO',
-        status: 'IN_STOCK_RUC10' as any,
-        origin: (selected.originType as any) || 'PERSONA',
-        purchasePrice: selected.priceAgreed || 0,
-        notaryCost: selected.costNotary || 0,
-        totalCost: totalCost,
-        intermediaryId: selected.intermediaryId,
-        supplierId: selected.supplierId,
-        blockNumber: selected.blockNumber,
-        stock: 1,
-      });
-
+      // Backend auto-creates the product in Almacén when status is updated to COMPLETED
       await BackendService.updatePurchase(selected.id, {
         status: 'COMPLETED',
         intermediaryId: selected.intermediaryId || null
@@ -187,9 +170,13 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
       } else {
         showAlert('Expediente transferido a Historial (Nota Alerta generada para el cliente)', 'info');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      showAlert('Error al guardar en el servidor', 'error');
+      if (error.response?.data?.detail) {
+        showAlert(error.response.data.detail, 'error');
+      } else {
+        showAlert('Error al guardar en el servidor', 'error');
+      }
     } finally {
       setLoading(false);
     }

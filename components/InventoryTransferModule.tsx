@@ -355,9 +355,31 @@ export const InventoryTransferModule: React.FC = () => {
                     await loadData(true);
                     window.dispatchEvent(new CustomEvent('wasitech_product_change'));
                     window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
-                } catch (error) {
-                    console.error("Error deleting product", error);
-                    toast.error("Error al eliminar el producto");
+                } catch (error: any) {
+                    if (error.response?.data?.detail === "PRODUCT_IN_TRANSACTION") {
+                        setConfirmDialog({
+                            isOpen: true,
+                            title: 'Devolver a Pendiente',
+                            message: 'Este producto ya fue facturado. ¿Seguro que desea devolver el producto a pendiente? Esta acción lo desvinculará de la venta original (Solo usuarios con permisos de Edición y Eliminación).',
+                            variant: 'danger',
+                            onConfirm: async () => {
+                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                                try {
+                                    await BackendService.deleteProduct(product.id, true);
+                                    await loadData(true);
+                                    window.dispatchEvent(new CustomEvent('wasitech_product_change'));
+                                    window.dispatchEvent(new CustomEvent('wasitech_purchase_change'));
+                                    toast.success("Producto devuelto a pendiente correctamente");
+                                } catch (e) {
+                                    console.error(e);
+                                    toast.error("Error al devolver el producto a pendiente");
+                                }
+                            }
+                        });
+                    } else {
+                        console.error("Error deleting product", error);
+                        toast.error("Error al eliminar el producto");
+                    }
                 }
             }
         });
