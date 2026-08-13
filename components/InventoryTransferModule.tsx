@@ -429,6 +429,7 @@ export const InventoryTransferModule: React.FC = () => {
             // 1. Crear transacción de transferencia en estado PENDIENTE de envío a SUNAT
             const trx = await BackendService.createTransaction({
                 trxType: 'transfer',
+                date: new Date(transferDate).toISOString(),
                 documentType: ReceiptType.FACTURA,
                 documentNumber: docNumber,
                 entityName: emitterName,

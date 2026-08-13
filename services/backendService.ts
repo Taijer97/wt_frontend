@@ -386,6 +386,7 @@ export const BackendService = {
 
   async createTransaction(payload: {
     trxType: 'sale' | 'purchase' | 'transfer';
+    date?: string;
     documentType: string;
     documentNumber: string;
     entityName: string;
@@ -397,7 +398,7 @@ export const BackendService = {
     pdfUrl?: string;
     items: { productId?: string; productName: string; quantity: number; unitPriceBase: number; totalBase: number }[];
   }) {
-    const res = await api.post('/transactions', {
+    const reqPayload: any = {
       trx_type: payload.trxType,
       document_type: payload.documentType,
       document_number: payload.documentNumber,
@@ -415,7 +416,9 @@ export const BackendService = {
         unit_price_base: i.unitPriceBase,
         total_base: i.totalBase,
       })),
-    });
+    };
+    if (payload.date) reqPayload.date = payload.date;
+    const res = await api.post('/transactions', reqPayload);
     clearCache('transactions');
     window.dispatchEvent(new CustomEvent('wasitech_transaction_change')); // Invalidate transactions cache
     return res.data;
