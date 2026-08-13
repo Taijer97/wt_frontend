@@ -81,13 +81,23 @@ export const EditPurchaseModal: React.FC<EditPurchaseModalProps> = ({
     if (currentSerial) {
       try {
         const page = await BackendService.getPurchasesPaged({ type: 'RUC10', q: currentSerial, limit: 50, offset: 0 }, true);
+        const allProducts = await BackendService.getProducts(true);
+
         const matches = ((page?.items || []) as any[]).filter(
           (p: any) => String(p?.id) !== String(purchase.id) && String(p?.product_serial || '').trim().toUpperCase() === currentSerial
         );
-        if (matches.length > 0) {
-          const sameOriginStore = matches.some((p: any) => String(p?.supplier_id || '').trim() === currentSupplierId);
+        
+        const prodMatches = allProducts.filter(
+          (p: any) => (p?.serialNumber || '').trim().toUpperCase() === currentSerial
+        );
+
+        if (matches.length > 0 || prodMatches.length > 0) {
+          const sameOriginStore = 
+            matches.some((p: any) => String(p?.supplier_id || '').trim() === currentSupplierId) ||
+            prodMatches.some((p: any) => String(p?.supplierId || '').trim() === currentSupplierId);
+            
           if (sameOriginStore) {
-            setFormError('Serie repetida en la misma tienda de origen. Cambie Proveedor Rel. o la serie para continuar.');
+            setFormError('¡Equipo Duplicado, Tienda de Origen! Por favor cambie la tienda de origen.');
             return;
           }
           const continueSave = window.confirm('La serie ya existe en otra tienda de origen. ¿Desea guardar de todos modos?');

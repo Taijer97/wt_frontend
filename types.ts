@@ -253,6 +253,7 @@ export interface Product {
   transferBase?: number;
   transferIgv?: number;
   transferTotal?: number;
+  blockNumber?: number;
   transferDocType?: ReceiptType;
   transferDocNumber?: string;
   transferVoucherUrl?: string;

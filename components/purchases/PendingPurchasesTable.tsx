@@ -149,6 +149,8 @@ export const PendingPurchasesTable: React.FC<PendingPurchasesTableProps> = ({
         notaryCost: selected.costNotary || 0,
         totalCost: totalCost,
         intermediaryId: selected.intermediaryId,
+        supplierId: selected.supplierId,
+        blockNumber: selected.blockNumber,
         stock: 1,
       });
 

@@ -4,7 +4,7 @@ import { DataService } from '../../services/dataService';
 import { BackendService } from '../../services/backendService';
 import { fetchDni } from '../../services/dniService';
 import { CustomerNoteModal } from '../CustomerNoteModal';
-import { CheckCircle, AlertTriangle, ArrowRight, DollarSign } from 'lucide-react';
+import { CheckCircle, AlertTriangle, ArrowRight, DollarSign, XCircle } from 'lucide-react';
 import { Button, Input, Modal } from '../ui';
 
 interface PurchaseRegisterFormProps {
@@ -62,6 +62,7 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   const [customerNote, setCustomerNote] = useState<CustomerRecord | null>(null);
   const [isDeletingCustomerNote, setIsDeletingCustomerNote] = useState(false);
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
+  const [duplicateType, setDuplicateType] = useState<'same_store' | 'different_store'>('different_store');
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeSection, setActiveSection] = useState<'vendedor' | 'equipo' | 'acuerdo'>('vendedor');
 
@@ -227,8 +228,14 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
 
       setShowDuplicateWarning(false);
       onSuccess();
-    } catch {
-      showAlert('Error al registrar la compra', 'error');
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || '';
+      if (typeof detail === 'string' && (detail.includes('¡Equipo Duplicado') || detail.includes('Duplicado'))) {
+        setDuplicateType('same_store');
+        setShowDuplicateWarning(true);
+      } else {
+        showAlert(detail || 'Error al registrar la compra', 'error');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -252,7 +259,12 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
     // Verificar si el número de serie ya fue registrado anteriormente
     if (formData.serie && formData.serie.trim()) {
       try {
-        const existRes = await BackendService.getPurchasesPaged({ q: formData.serie.trim(), limit: 1, offset: 0 }, true);
+        const existRes = await BackendService.getPurchasesPaged({ q: formData.serie.trim(), limit: 10, offset: 0 }, true);
+        const allProducts = await BackendService.getProducts(true);
+        
+        let matchSupplier = '';
+        let found = false;
+
         if (existRes && existRes.items && existRes.items.length > 0) {
           const match = existRes.items.find((p: any) =>
             (p.product_serial || '').toUpperCase() === formData.serie.trim().toUpperCase() ||
@@ -260,9 +272,28 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
             (p.items || []).some((it: any) => (it.serial || '').toUpperCase() === formData.serie.trim().toUpperCase())
           );
           if (match) {
-            setShowDuplicateWarning(true);
-            return;
+            matchSupplier = match.supplier_id ? String(match.supplier_id) : '';
+            found = true;
           }
+        }
+
+        if (!found) {
+          const matchProd = allProducts.find(p => (p.serialNumber || '').toUpperCase() === formData.serie.trim().toUpperCase());
+          if (matchProd) {
+            matchSupplier = matchProd.supplierId ? String(matchProd.supplierId) : '';
+            found = true;
+          }
+        }
+
+        if (found) {
+          const formSupplier = formData.supplierId ? String(formData.supplierId) : '';
+          if (matchSupplier === formSupplier) {
+            setDuplicateType('same_store');
+          } else {
+            setDuplicateType('different_store');
+          }
+          setShowDuplicateWarning(true);
+          return;
         }
       } catch {}
     }
@@ -638,23 +669,38 @@ export const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
       <Modal
         open={showDuplicateWarning}
         onClose={() => setShowDuplicateWarning(false)}
-        title="¡Equipo Duplicado!"
-        icon={<AlertTriangle className="w-6 h-6 text-amber-500" />}
+        title={duplicateType === 'same_store' ? "¡Equipo Duplicado en Tienda!" : "¡Equipo Duplicado!"}
+        icon={duplicateType === 'same_store' ? <XCircle className="w-6 h-6 text-red-500" /> : <AlertTriangle className="w-6 h-6 text-amber-500" />}
         size="sm"
         footer={
           <div className="flex gap-2 justify-end w-full">
             <Button variant="ghost" onClick={() => setShowDuplicateWarning(false)}>
-              Cancelar
+              {duplicateType === 'same_store' ? 'Entendido' : 'Cancelar'}
             </Button>
-            <Button variant="danger" onClick={processSubmit} isLoading={isProcessing}>
-              Guardar De Todos Modos
-            </Button>
+            {duplicateType !== 'same_store' && (
+              <Button variant="danger" onClick={processSubmit} isLoading={isProcessing}>
+                Guardar De Todos Modos
+              </Button>
+            )}
           </div>
         }
       >
-        <p className="text-sm text-slate-600 font-medium">
-          El Número de Serie/IMEI <strong className="font-mono text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{formData.serie.toUpperCase()}</strong> ya se encuentra registrado en el sistema previamente.
-        </p>
+        <div className="text-sm font-medium">
+          {duplicateType === 'same_store' ? (
+             <div className="text-red-700 bg-red-50 p-3 rounded-lg border border-red-100">
+               <p className="mb-2">
+                 El Número de Serie/IMEI <strong className="font-mono text-red-900 bg-white px-2 py-0.5 rounded">{formData.serie.toUpperCase()}</strong> ya se encuentra registrado en el sistema <strong>para esta misma Tienda de Origen</strong>.
+               </p>
+               <p>
+                 Por favor cambie la tienda de origen o verifique el número de serie.
+               </p>
+             </div>
+          ) : (
+             <p className="text-slate-600">
+               El Número de Serie/IMEI <strong className="font-mono text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{formData.serie.toUpperCase()}</strong> ya se encuentra registrado en el sistema previamente (en otra tienda u origen).
+             </p>
+          )}
+        </div>
       </Modal>
     </div>
   );

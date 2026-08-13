@@ -92,6 +92,7 @@ export const InventoryTransferModule: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [intermediaries, setIntermediaries] = useState<Intermediary[]>([]);
+    const [suppliers, setSuppliers] = useState<any[]>([]);
     const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
     const [transferCalc, setTransferCalc] = useState({ base: 0, igv: 0, total: 0 });
     const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
@@ -186,14 +187,16 @@ export const InventoryTransferModule: React.FC = () => {
     const loadData = async (forceRefresh = false) => {
         if (!forceRefresh) setIsLoadingData(true);
         try {
-            const [prods, inters, trxs, cfg] = await Promise.all([
+            const [prods, inters, supps, trxs, cfg] = await Promise.all([
                 BackendService.getProducts(forceRefresh),
                 BackendService.getIntermediaries(forceRefresh),
+                BackendService.getSuppliers(forceRefresh),
                 BackendService.getTransactions('transfer', forceRefresh),
                 BackendService.getConfig(forceRefresh)
             ]);
             setProducts(prods);
             setIntermediaries(inters);
+            setSuppliers(supps);
             setTransactions(trxs);
             setConfig(cfg);
         } catch (error) {
@@ -271,12 +274,12 @@ export const InventoryTransferModule: React.FC = () => {
     useEffect(() => {
         if (!config) return;
         if (selectedTransferProducts.length === 0) {
-            setTransferCalc({ base: 0, igv: 0, total: 0 });
-            setPriceOverrides({});
-            setSelectedIntermediaryId('');
-            setVoucherFile(null);
-            setVoucherPreview(null);
-            setInvoiceFile(null);
+            setTransferCalc(prev => (prev.base === 0 && prev.igv === 0 && prev.total === 0 ? prev : { base: 0, igv: 0, total: 0 }));
+            setPriceOverrides(prev => (Object.keys(prev).length === 0 ? prev : {}));
+            setSelectedIntermediaryId(prev => (prev === '' ? prev : ''));
+            setVoucherFile(prev => (prev === null ? prev : null));
+            setVoucherPreview(prev => (prev === null ? prev : null));
+            setInvoiceFile(prev => (prev === null ? prev : null));
             return;
         }
         const totals = selectedTransferProducts.reduce(
@@ -290,7 +293,12 @@ export const InventoryTransferModule: React.FC = () => {
             },
             { base: 0, igv: 0, total: 0 }
         );
-        setTransferCalc(totals);
+        setTransferCalc(prev => {
+            if (Math.abs(prev.base - totals.base) < 0.001 && Math.abs(prev.igv - totals.igv) < 0.001 && Math.abs(prev.total - totals.total) < 0.001) {
+                return prev;
+            }
+            return totals;
+        });
         if (!selectedIntermediaryId) {
             setSelectedIntermediaryId(selectedTransferProducts[0].intermediaryId || '');
         }
@@ -548,6 +556,11 @@ export const InventoryTransferModule: React.FC = () => {
 
     const getIntermediaryName = (id?: string) => {
         return intermediaries.find(i => i.id === id)?.fullName || 'N/A';
+    };
+
+    const getSupplierName = (id?: string) => {
+        const s = suppliers.find(sup => sup.id === id);
+        return s ? (s.shortName || s.name) : 'N/A';
     };
 
     return (
@@ -902,8 +915,8 @@ export const InventoryTransferModule: React.FC = () => {
                                         <thead className="text-[10px] text-slate-500 uppercase bg-slate-50 font-black tracking-widest border-b">
                                             <tr>
                                                 {activeTab === 'ruc10' && <th className="px-4 py-3 w-10"></th>}
-                                                <th className="px-5 py-3">Propietario / Serie</th>
-                                                <th className="px-5 py-3">Equipo</th>
+                                                <th className="px-5 py-3">Propietario</th>
+                                                <th className="px-5 py-3">Equipo / Serie</th>
                                                 <th className="px-5 py-3 text-right">Costo</th>
                                                 <th className="px-5 py-3 text-center">Estado</th>
                                                 {activeTab === 'ruc10' && <th className="px-5 py-3 text-center w-12"></th>}
@@ -957,14 +970,24 @@ export const InventoryTransferModule: React.FC = () => {
                                                                 </td>
                                                             )}
                                                             <td className="px-5 py-3.5">
-                                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                                <div className="flex flex-wrap items-center gap-1.5">
                                                                     <UserCheck className="w-3 h-3 text-blue-500 shrink-0" />
                                                                     <span className="font-extrabold text-slate-800 uppercase text-[11px] leading-none">{getIntermediaryName(product.intermediaryId)}</span>
+                                                                    
+                                                                    {product.supplierId && (
+                                                                        <span className="ml-1 bg-purple-100 text-purple-800 text-[9px] font-black px-1.5 py-0.5 rounded-sm border border-purple-200">
+                                                                            {getSupplierName(product.supplierId)}
+                                                                        </span>
+                                                                    )}
+
+                                                                    {product.blockNumber && (
+                                                                        <span className="ml-1 bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-sm border border-amber-200">B{product.blockNumber}</span>
+                                                                    )}
                                                                 </div>
-                                                                <div className="text-[10px] font-bold text-slate-400 font-mono uppercase">{product.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {product.serialNumber}</div>
                                                             </td>
                                                             <td className="px-5 py-3.5">
                                                                 <div className="font-extrabold text-slate-900 uppercase text-xs leading-tight">{product.category} {product.brand} {product.model}</div>
+                                                                <div className="text-[10px] font-bold text-slate-400 font-mono uppercase mt-0.5">{product.idType === 'IMEI' ? 'IMEI' : 'S/N'}: {product.serialNumber}</div>
                                                                 {product.specs && <div className="text-[10px] text-slate-400 font-medium italic mt-0.5">{product.specs}</div>}
                                                             </td>
                                                             <td className="px-5 py-3.5 text-right">
