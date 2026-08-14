@@ -93,6 +93,7 @@ export const SalesModule: React.FC = () => {
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [customerNote, setCustomerNote] = useState<CustomerRecord | null>(null);
     const [isDeletingCustomerNote, setIsDeletingCustomerNote] = useState(false);
+    const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10));
 
     const showAlert = (message: string, type: 'success' | 'error') => setAlertInfo({ message, type });
 
@@ -285,6 +286,7 @@ const totalBaseAmount = transactionItems.reduce((acc, item) => acc + item.totalB
         try {
             await BackendService.createTransaction({
                 trxType: 'sale',
+                date: new Date(saleDate).toISOString(),
                 documentType: docType,
                 documentNumber: saleInvoiceNumber,
                 entityName: clientName,
@@ -549,7 +551,16 @@ const totalBaseAmount = transactionItems.reduce((acc, item) => acc + item.totalB
                         </ul>
 
                         <div className="bg-slate-50 p-5 rounded-2xl space-y-3 border border-slate-200">
-                            <div className="flex justify-between text-slate-600 font-bold text-xs uppercase">
+                            <div className="flex justify-between items-center mb-3">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha de Emisión</label>
+                                <input 
+                                    type="date"
+                                    value={saleDate}
+                                    onChange={e => setSaleDate(e.target.value)}
+                                    className="bg-transparent border-none text-slate-700 font-bold text-xs p-0 focus:ring-0 text-right cursor-pointer"
+                                />
+                            </div>
+                            <div className="flex justify-between text-slate-600 font-bold text-xs uppercase pt-2 border-t border-slate-200">
                                 <span>Subtotal</span>
                                 <span>S/ {subtotal.toFixed(2)}</span>
                             </div>
