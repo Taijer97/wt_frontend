@@ -143,4 +143,25 @@ html, body { height: 100%; }
   .custom-scrollbar {
     overflow: visible !important;
   }
+  
+  /* Print Modal Support */
+  #root {
+    display: none !important;
+  }
+  #print-root {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 1.5cm !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media screen {
+  #print-root {
+    display: none !important;
+  }
 }

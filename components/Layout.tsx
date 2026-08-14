@@ -141,7 +141,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
 
       {/* Sidebar */}
       <aside 
-        className={`fixed inset-y-0 left-0 w-64 bg-slate-950 text-white flex flex-col shadow-2xl z-50 transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 w-64 bg-slate-950 text-white flex flex-col shadow-2xl z-50 transition-transform duration-300 ease-in-out md:static md:translate-x-0 print:hidden ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

@@ -244,9 +244,10 @@ export const SalesModule: React.FC = () => {
         return baseImponibleVenta * (1 + config.igvRate);
     };
 
-    const totalCart = cart.reduce((acc, p) => acc + p.finalPrice, 0);
-    const subtotal = config.isIgvExempt ? totalCart : (totalCart / (1 + config.igvRate));
-    const igv = config.isIgvExempt ? 0 : (totalCart - subtotal);
+    const round2 = (num: number) => Math.round(num * 100) / 100;
+    const totalCart = round2(cart.reduce((acc, p) => acc + p.finalPrice, 0));
+    const subtotal = config.isIgvExempt ? totalCart : round2(totalCart / (1 + config.igvRate));
+    const igv = config.isIgvExempt ? 0 : round2(totalCart - subtotal);
 
     const handleProcessSale = async () => {
         if(cart.length === 0) return;
@@ -262,8 +263,8 @@ export const SalesModule: React.FC = () => {
         const saleInvoiceNumber = `${docSeries} - ${docCorrelative}`;
 
         const transactionItems: TransactionItem[] = cart.map(p => {
-             const salePriceTotal = p.finalPrice;
-             const baseVenta = config.isIgvExempt ? salePriceTotal : (salePriceTotal / (1 + config.igvRate));
+             const salePriceTotal = round2(p.finalPrice);
+             const baseVenta = config.isIgvExempt ? salePriceTotal : round2(salePriceTotal / (1 + config.igvRate));
              
              const updatedProduct = { ...p, status: ProductStatus.SOLD };
              DataService.saveProduct(updatedProduct);
@@ -278,9 +279,9 @@ export const SalesModule: React.FC = () => {
              };
         });
 
-const totalBaseAmount = transactionItems.reduce((acc, item) => acc + item.totalBase, 0);
-        const totalIgvAmount = config.isIgvExempt ? 0 : (totalBaseAmount * config.igvRate);
-        const totalFinalAmount = totalBaseAmount + totalIgvAmount;
+        const totalBaseAmount = round2(transactionItems.reduce((acc, item) => acc + item.totalBase, 0));
+        const totalIgvAmount = config.isIgvExempt ? 0 : round2(totalBaseAmount * config.igvRate);
+        const totalFinalAmount = round2(totalBaseAmount + totalIgvAmount);
 
         setIsProcessing(true);
         try {

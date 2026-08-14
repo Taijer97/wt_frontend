@@ -182,6 +182,29 @@ export const InventoryTransferModule: React.FC = () => {
         return (max + 1).toString();
     };
 
+    const handlePrintHTML = () => {
+        const printContent = document.getElementById('invoice-print-area');
+        if (!printContent) return;
+        
+        let printRoot = document.getElementById('print-root');
+        if (!printRoot) {
+            printRoot = document.createElement('div');
+            printRoot.id = 'print-root';
+            document.body.appendChild(printRoot);
+        }
+        
+        printRoot.innerHTML = printContent.innerHTML;
+        
+        // Ensure Tailwind classes apply correctly
+        printRoot.className = 'bg-white text-slate-900 p-8 max-w-5xl mx-auto';
+        
+        window.print();
+        
+        setTimeout(() => {
+            if (printRoot) printRoot.innerHTML = '';
+        }, 1000);
+    };
+
     const [isLoadingData, setIsLoadingData] = useState(true);
 
     const loadData = async (forceRefresh = false) => {
@@ -260,6 +283,7 @@ export const InventoryTransferModule: React.FC = () => {
     }, [transactions]);
 
     const calcForProduct = (product: Product) => {
+        const round2 = (num: number) => Math.round(num * 100) / 100;
         const totalCost = product.totalCost || 0;
         const marginType = config?.ruc10MarginType;
         const margin = config?.ruc10Margin || 0;
@@ -272,8 +296,9 @@ export const InventoryTransferModule: React.FC = () => {
             base = priceOverrides[product.id];
         }
 
-        const igv = base * effectiveIgvRate;
-        const total = base + igv;
+        base = round2(base);
+        const igv = round2(base * effectiveIgvRate);
+        const total = round2(base + igv);
         return { base, igv, total };
     };
 
@@ -299,11 +324,12 @@ export const InventoryTransferModule: React.FC = () => {
             },
             { base: 0, igv: 0, total: 0 }
         );
-        setTransferCalc(prev => {
-            if (Math.abs(prev.base - totals.base) < 0.001 && Math.abs(prev.igv - totals.igv) < 0.001 && Math.abs(prev.total - totals.total) < 0.001) {
-                return prev;
-            }
-            return totals;
+        
+        const round2 = (num: number) => Math.round(num * 100) / 100;
+        setTransferCalc({
+            base: round2(totals.base),
+            igv: round2(totals.igv),
+            total: round2(totals.total)
         });
         if (!selectedIntermediaryId) {
             setSelectedIntermediaryId(selectedTransferProducts[0].intermediaryId || '');
@@ -1470,11 +1496,11 @@ export const InventoryTransferModule: React.FC = () => {
             {/* MODAL VISTA PREVIA COMPROBANTE DE TRANSFERENCIA (SUNAT FORMAT) */}
             {previewingTrx && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm animate-fade-in"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm animate-fade-in print:absolute print:inset-0 print:bg-transparent print:p-0"
                     onClick={() => setPreviewingTrx(null)}
                 >
                     <div
-                        className="bg-white w-full max-w-4xl h-[95vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl animate-scale-in"
+                        className="bg-white w-full max-w-4xl h-[95vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl animate-scale-in print:h-auto print:max-w-none print:w-full print:shadow-none print:rounded-none print:overflow-visible"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Modal Header */}
@@ -1513,7 +1539,7 @@ export const InventoryTransferModule: React.FC = () => {
                                 )}
                                 <button
                                     type="button"
-                                    onClick={() => window.print()}
+                                    onClick={handlePrintHTML}
                                     className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> Imprimir
@@ -1528,7 +1554,7 @@ export const InventoryTransferModule: React.FC = () => {
                         </div>
 
                         {/* Modal Body / Receipt Layout */}
-                        <div className="p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-6 relative">
+                        <div id="invoice-print-area" className="p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-6 relative print:overflow-visible print:h-auto print:p-0">
                             {/* Watermark Logo Background */}
                             <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-[0.05] z-0 overflow-hidden">
                                 <img src="/WT_logo2.png" alt="Watermark Logo" className="w-[450px] object-contain" />
