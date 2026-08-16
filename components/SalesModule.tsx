@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, ShoppingCart, Trash2, Printer, User, Building, PackageX, Tag, ShieldCheck, CheckCircle, X } from 'lucide-react';
 import { Product, ProductStatus, TransactionItem, CustomerRecord } from '../types';
 import { DataService } from '../services/dataService';
@@ -70,8 +70,7 @@ export const SalesModule: React.FC = () => {
                 setCustomerNote(null);
                 const info = await fetchRuc(clientDoc);
                 setClientName((info.razonSocial || info.nombreComercial || '').toUpperCase());
-                const fullAddr = [info.direccion, info.distrito, info.provincia, info.departamento].filter(Boolean).join(' - ');
-                setClientAddress((fullAddr || info.direccion || '').toUpperCase());
+                setClientAddress((info.direccion || '').toUpperCase());
             } else {
                 showAlert('Documento inválido', 'error');
             }
@@ -87,6 +86,18 @@ export const SalesModule: React.FC = () => {
     const [loadingRuc, setLoadingRuc] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [stockRuc20, setStockRuc20] = useState<Product[]>([]);
+
+    const filteredStock = useMemo(() => {
+        if (!searchTerm.trim()) return stockRuc20;
+        const term = searchTerm.toUpperCase();
+        return stockRuc20.filter(p => 
+            String(p.category || '').toUpperCase().includes(term) ||
+            String(p.brand || '').toUpperCase().includes(term) ||
+            String(p.model || '').toUpperCase().includes(term) ||
+            String(p.serialNumber || '').toUpperCase().includes(term) ||
+            String(p.specs || '').toUpperCase().includes(term)
+        );
+    }, [stockRuc20, searchTerm]);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [alertInfo, setAlertInfo] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -461,6 +472,17 @@ export const SalesModule: React.FC = () => {
                             )}
                         </div>
                     </div>
+
+                    <div className="mb-6 relative">
+                        <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                            type="text"
+                            placeholder="Buscar producto por equipo, marca, modelo o serie..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl font-bold text-sm focus:border-purple-500 bg-slate-50 text-slate-900 shadow-inner"
+                        />
+                    </div>
                     
                     {isLoadingData ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -476,14 +498,14 @@ export const SalesModule: React.FC = () => {
                                 </div>
                             ))}
                         </div>
-                    ) : stockRuc20.length === 0 ? (
+                    ) : filteredStock.length === 0 ? (
                         <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                             <PackageX className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                            <p className="text-slate-600 font-bold">No hay stock disponible para facturar.</p>
+                            <p className="text-slate-600 font-bold">No hay stock disponible o la búsqueda no encontró coincidencias.</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {stockRuc20.map(prod => {
+                            {filteredStock.map(prod => {
                                 const inCart = cart.some(c => c.id === prod.id);
                                 const netCost = getProductCostBase(prod);
                                 const suggestedPriceTotal = calculateSalePriceTotal(netCost);

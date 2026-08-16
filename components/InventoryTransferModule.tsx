@@ -1674,14 +1674,56 @@ export const InventoryTransferModule: React.FC = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {(previewingTrx.items || []).map((item, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-50">
-                                                    <td className="px-4 py-3 font-mono font-bold">{item.quantity || 1}</td>
-                                                    <td className="px-4 py-3 font-bold text-slate-800 uppercase">{item.productName}</td>
-                                                    <td className="px-4 py-3 text-right font-mono font-bold">S/ {(item.unitPriceBase || 0).toFixed(2)}</td>
-                                                    <td className="px-4 py-3 text-right font-mono font-black text-slate-900">S/ {(item.totalBase || 0).toFixed(2)}</td>
-                                                </tr>
-                                            ))}
+                                            {(() => {
+                                                const groups: { [key: string]: any } = {};
+                                                (previewingTrx.items || []).forEach(item => {
+                                                    const nameMatch = item.productName?.match(/^(.*?)\s*\((IMEI|S\/N):\s*(.*?)\)$/i);
+                                                    let baseName = item.productName || 'Producto';
+                                                    let serial = "";
+                                                    let prefix = "S/N:";
+                                                    if (nameMatch) {
+                                                        baseName = nameMatch[1].trim();
+                                                        prefix = nameMatch[2].toUpperCase() + ":";
+                                                        serial = nameMatch[3].trim();
+                                                    }
+                                                    
+                                                    const priceKey = (item.unitPriceBase || 0).toFixed(2);
+                                                    const groupKey = `${baseName}_${priceKey}`;
+                                                    
+                                                    if (!groups[groupKey]) {
+                                                        groups[groupKey] = {
+                                                            ...item,
+                                                            baseName,
+                                                            quantity: item.quantity || 1,
+                                                            serials: serial ? [serial] : [],
+                                                            serialPrefix: prefix
+                                                        };
+                                                    } else {
+                                                        groups[groupKey].quantity += (item.quantity || 1);
+                                                        groups[groupKey].totalBase += (item.totalBase || 0);
+                                                        if (serial) {
+                                                            groups[groupKey].serials.push(serial);
+                                                        }
+                                                    }
+                                                });
+                                                const groupedItems = Object.values(groups);
+                                                
+                                                return groupedItems.map((item: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50">
+                                                        <td className="px-4 py-3 font-mono font-bold align-top">{item.quantity}</td>
+                                                        <td className="px-4 py-3 font-bold text-slate-800 uppercase align-top">
+                                                            <div>{item.baseName}</div>
+                                                            {item.serials && item.serials.length > 0 && (
+                                                                <div className="text-[10px] text-slate-500 font-mono mt-1 break-words leading-relaxed max-w-sm">
+                                                                    {item.serialPrefix} {item.serials.join(', ')}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-mono font-bold align-top">S/ {(item.unitPriceBase || 0).toFixed(2)}</td>
+                                                        <td className="px-4 py-3 text-right font-mono font-black text-slate-900 align-top">S/ {(item.totalBase || 0).toFixed(2)}</td>
+                                                    </tr>
+                                                ));
+                                            })()}
                                         </tbody>
                                     </table>
                                 </div>

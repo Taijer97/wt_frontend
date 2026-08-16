@@ -224,6 +224,27 @@ export const InvoicingDashboardModule: React.FC = () => {
         return { totalFacturas, totalNC, countFacturas, countNC, neto };
     }, [currentSectionTrxs]);
 
+    const handlePrintHTML = () => {
+        const printContent = document.getElementById('invoice-print-area');
+        if (!printContent) return;
+        
+        let printRoot = document.getElementById('print-root');
+        if (!printRoot) {
+            printRoot = document.createElement('div');
+            printRoot.id = 'print-root';
+            document.body.appendChild(printRoot);
+        }
+        
+        printRoot.innerHTML = printContent.innerHTML;
+        printRoot.className = 'bg-white text-slate-900 p-8 max-w-5xl mx-auto';
+        
+        window.print();
+        
+        setTimeout(() => {
+            if (printRoot) printRoot.innerHTML = '';
+        }, 1000);
+    };
+
     const handleEmitirNotaCredito = async () => {
         if (!creditNoteTrx) return;
         setIsSubmitting(true);
@@ -626,7 +647,7 @@ export const InvoicingDashboardModule: React.FC = () => {
                                 )}
                                 <button
                                     type="button"
-                                    onClick={() => window.print()}
+                                    onClick={handlePrintHTML}
                                     className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> Imprimir
@@ -641,7 +662,7 @@ export const InvoicingDashboardModule: React.FC = () => {
                         </div>
 
                         {/* Modal Body / Receipt Layout */}
-                        <div className="p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-6 relative">
+                        <div id="invoice-print-area" className="p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-6 relative">
                             {/* Watermark Logo Background */}
                             <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-[0.05] z-0 overflow-hidden">
                                 <img src="/WT_logo2.png" alt="Watermark Logo" className="w-[450px] object-contain" />

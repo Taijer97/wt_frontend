@@ -125,7 +125,24 @@ export const SalesHistoryModule: React.FC = () => {
   };
 
   const handlePrint = () => {
-    window.print();
+        const printContent = document.getElementById('invoice-print-area');
+        if (!printContent) return;
+        
+        let printRoot = document.getElementById('print-root');
+        if (!printRoot) {
+            printRoot = document.createElement('div');
+            printRoot.id = 'print-root';
+            document.body.appendChild(printRoot);
+        }
+        
+        printRoot.innerHTML = printContent.innerHTML;
+        printRoot.className = 'bg-white text-slate-900 p-8 max-w-5xl mx-auto';
+        
+        window.print();
+        
+        setTimeout(() => {
+            if (printRoot) printRoot.innerHTML = '';
+        }, 1000);
   };
 
   const handleStartDelete = (trx: Transaction, e: React.MouseEvent) => {
@@ -495,7 +512,7 @@ export const SalesHistoryModule: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto bg-slate-100 p-8 print:p-0 print:bg-white print:overflow-visible">
-              <div className="max-w-[21cm] mx-auto bg-white p-10 shadow-xl print:shadow-none print:w-full rounded-2xl border border-slate-200 print:border-none relative overflow-hidden">
+              <div id="invoice-print-area" className="max-w-[21cm] mx-auto bg-white p-10 shadow-xl print:shadow-none print:w-full rounded-2xl border border-slate-200 print:border-none relative overflow-hidden">
                 {/* MARCA DE AGUA (WATERMARK - SOLO LOGO) */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden z-0">
                   <img

@@ -26,8 +26,11 @@ import { Button, Badge, Modal, useAlert } from './ui';
 
 export const StatisticalDashboard: React.FC = () => {
   const config = DataService.getConfig();
-  const isRER = config.ruc20TaxRegime === TaxRegime.RER;
   const alert = useAlert();
+  const [activeRuc, setActiveRuc] = useState<'ruc20' | 'ruc10'>('ruc20');
+
+  const currentTaxRegime = activeRuc === 'ruc10' ? config.ruc10TaxRegime : config.ruc20TaxRegime;
+  const isRER = currentTaxRegime === TaxRegime.RER;
 
   const currentYearNow = new Date().getFullYear();
   const currentMonthNow = new Date().getMonth();
@@ -97,13 +100,36 @@ export const StatisticalDashboard: React.FC = () => {
       setActiveView('monthly');
     }
     calculateRealData();
-  }, [selectedYear, selectedMonth, activeView, config.ruc20TaxRegime]);
+  }, [selectedYear, selectedMonth, activeView, activeRuc, config.ruc20TaxRegime, config.ruc10TaxRegime]);
 
   const calculateRealData = async () => {
     setLoading(true);
     try {
-      const transactionsSale = await BackendService.getTransactions('sale');
-      const transactionsPurchase = await BackendService.getTransactions('purchase');
+      const allTrxs = await BackendService.getTransactions();
+      const allPurchases = await BackendService.getTransactions('purchase');
+
+      const transactionsSale = activeRuc === 'ruc20'
+        ? allTrxs.filter(t => t.trxType === 'sale' || t.trxType === 'credit_note_ruc20' || (t.trxType === 'credit_note' && t.entityDocNumber !== '10710425162' && t.entityDocNumber !== '20615233731'))
+        : allTrxs.filter(t => t.trxType === 'transfer' || t.trxType === 'credit_note_ruc10' || (t.trxType === 'credit_note' && (t.entityDocNumber === '10710425162' || t.entityDocNumber === '20615233731')));
+
+      let ruc10PurchasesMapped: any[] = [];
+      if (activeRuc === 'ruc10') {
+        try {
+          const rawPurchases = await BackendService.getPurchases();
+          ruc10PurchasesMapped = rawPurchases.map((p: any) => ({
+            ...p,
+            date: p.operationDate || p.date,
+            totalAmount: Number(p.priceAgreed || 0) + Number(p.costNotary || 0),
+            baseAmount: Number(p.priceAgreed || 0) + Number(p.costNotary || 0)
+          }));
+        } catch (e) {
+          console.error("Error loading RUC 10 purchases", e);
+        }
+      }
+
+      const transactionsPurchase = activeRuc === 'ruc20'
+        ? allTrxs.filter(t => t.trxType === 'transfer')
+        : ruc10PurchasesMapped;
       let inventory = DataService.getProducts();
       let employees = DataService.getEmployees();
       let expenses: any[] = [];
@@ -332,7 +358,7 @@ export const StatisticalDashboard: React.FC = () => {
   };
 
   const getTaxRegimeBadge = () => {
-    switch (config.ruc20TaxRegime) {
+    switch (currentTaxRegime) {
       case TaxRegime.RER:
         return <Badge variant="info" size="md">Régimen Especial (RER) - 1.5%</Badge>;
       case TaxRegime.RMT:
@@ -364,11 +390,31 @@ export const StatisticalDashboard: React.FC = () => {
               Tablero Estadístico Financiero
             </h1>
             <p className="text-xs text-slate-400 font-medium max-w-xl">
-              Análisis cuantitativo de rentabilidad real, tributación SUNAT (IGV + Renta) y proyección MYPE de 1,700 UIT.
+              Análisis cuantitativo de rentabilidad real, tributación SUNAT ({config.isIgvExempt ? 'Exonerado IGV' : 'IGV'} + Renta) y proyección MYPE de 1,700 UIT.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 bg-slate-900/90 p-3 rounded-2xl border border-slate-800 backdrop-blur-md">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 self-end">
+              <button
+                onClick={() => setActiveRuc('ruc10')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                  activeRuc === 'ruc10' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                RUC 10
+              </button>
+              <button
+                onClick={() => setActiveRuc('ruc20')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                  activeRuc === 'ruc20' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                RUC 20
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 bg-slate-900/90 p-3 rounded-2xl border border-slate-800 backdrop-blur-md">
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-950 rounded-xl border border-slate-800 text-xs font-bold">
               <Calendar className="w-3.5 h-3.5 text-emerald-400" />
               <select
@@ -410,6 +456,7 @@ export const StatisticalDashboard: React.FC = () => {
               Refrescar
             </Button>
           </div>
+          </div>
         </div>
 
         <div className="mt-6 pt-6 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
@@ -440,9 +487,9 @@ export const StatisticalDashboard: React.FC = () => {
 
           <div className="text-xs font-bold text-slate-400 flex items-center gap-2">
             <Building2 className="w-4 h-4 text-emerald-400" />
-            <span>{config.companyName || 'Empresa Wasitech'}</span>
+            <span>{activeRuc === 'ruc10' ? 'DIAZ ORELLANA KATHERIN QUELYN' : (config.companyName || 'Empresa Wasitech')}</span>
             <span className="opacity-40">•</span>
-            <span>RUC: {config.companyRuc || '20XXXXXXXXX'}</span>
+            <span>RUC: {activeRuc === 'ruc10' ? '10710425162' : (config.companyRuc || '20XXXXXXXXX')}</span>
           </div>
         </div>
       </div>
@@ -468,7 +515,7 @@ export const StatisticalDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-2xl font-black text-slate-900 tracking-tight">{formatPEN(stats.salesMonthBase)}</p>
-                <p className="text-[11px] font-bold text-slate-400 mt-1">Bruto incl. IGV: <span className="text-slate-700 font-extrabold">{formatPEN(stats.salesMonthGross)}</span></p>
+                <p className="text-[11px] font-bold text-slate-400 mt-1">Bruto {config.isIgvExempt ? '(Exonerado)' : 'incl. IGV'}: <span className="text-slate-700 font-extrabold">{formatPEN(stats.salesMonthGross)}</span></p>
               </div>
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
                 <span className="text-slate-500 font-bold">IGV Generado</span>
@@ -525,7 +572,7 @@ export const StatisticalDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-2xl font-black text-emerald-400 tracking-tight">{formatPEN(stats.totalSunat)}</p>
-                <p className="text-[11px] font-bold text-slate-400 mt-1">IGV: <span className="text-white font-extrabold">{formatPEN(stats.igvToPay)}</span> + Renta: <span className="text-white font-extrabold">{formatPEN(stats.rentaToPay)}</span></p>
+                <p className="text-[11px] font-bold text-slate-400 mt-1">{config.isIgvExempt ? 'IGV Exonerado' : `IGV: ${formatPEN(stats.igvToPay)}`} + Renta: <span className="text-white font-extrabold">{formatPEN(stats.rentaToPay)}</span></p>
               </div>
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
                 <span className="text-slate-400 font-bold">Tasa Renta Aplicada</span>
@@ -561,13 +608,13 @@ export const StatisticalDashboard: React.FC = () => {
 
                   <div className={`p-4 rounded-2xl border flex justify-between items-center ${stats.igvToPay > 0 ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/70 border-emerald-200'}`}>
                     <div>
-                      <p className="text-[10px] font-black uppercase text-slate-700">
-                        {stats.igvToPay > 0 ? 'IGV a Pagar SUNAT' : 'Saldo a Favor Crédito IGV'}
-                      </p>
+                      <h4 className={`font-black text-xs uppercase tracking-tight ${stats.igvToPay > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                        {config.isIgvExempt ? 'Operaciones Exoneradas' : stats.igvToPay > 0 ? 'IGV a Pagar SUNAT' : 'Saldo a Favor Crédito IGV'}
+                      </h4>
                       <p className="text-[10px] font-medium text-slate-500">Resultado liquidación IGV</p>
                     </div>
                     <span className={`font-black text-base ${stats.igvToPay > 0 ? 'text-amber-900' : 'text-emerald-900'}`}>
-                      {stats.igvToPay > 0 ? formatPEN(stats.igvToPay) : formatPEN(stats.igvCreditBalance)}
+                      {config.isIgvExempt ? formatPEN(0) : stats.igvToPay > 0 ? formatPEN(stats.igvToPay) : formatPEN(stats.igvCreditBalance)}
                     </span>
                   </div>
 
@@ -584,7 +631,7 @@ export const StatisticalDashboard: React.FC = () => {
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between bg-slate-900 text-white p-4 rounded-2xl">
                 <div>
                   <p className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Total Obligación SUNAT</p>
-                  <p className="text-xs text-slate-400 font-medium">IGV a Pagar + Pago Renta</p>
+                  <p className="text-xs text-slate-400 font-medium">{config.isIgvExempt ? 'Pago Renta (IGV Exonerado)' : 'IGV a Pagar + Pago Renta'}</p>
                 </div>
                 <p className="text-xl font-black text-emerald-400">{formatPEN(stats.totalSunat)}</p>
               </div>
@@ -683,10 +730,10 @@ export const StatisticalDashboard: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm lg:col-span-2 space-y-6">
               <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-black text-slate-900 text-lg uppercase tracking-tight">
-                    Control de Límite MYPE {selectedYear} ({config.ruc20TaxRegime})
-                  </h3>
+                <div className="flex items-center gap-2 mt-1 lg:mt-0">
+                  <span className="text-slate-900 font-black text-sm uppercase tracking-tight">
+                    Control de Límite MYPE {selectedYear} ({currentTaxRegime})
+                  </span>
                   <p className="text-xs text-slate-500 font-medium">Tope legal anualizado de 1,700 UIT (UIT {selectedYear}: S/ {stats.uitValue.toLocaleString()})</p>
                 </div>
                 <div className="text-right">
@@ -823,13 +870,13 @@ export const StatisticalDashboard: React.FC = () => {
           <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase">Contribuyente</p>
-              <p className="font-extrabold text-slate-900 text-sm">{config.companyName}</p>
-              <p className="text-slate-500 font-bold">RUC: {config.companyRuc}</p>
+              <p className="font-extrabold text-slate-900 text-sm">{activeRuc === 'ruc10' ? 'DIAZ ORELLANA KATHERIN QUELYN' : config.companyName}</p>
+              <p className="text-slate-500 font-bold">RUC: {activeRuc === 'ruc10' ? '10710425162' : config.companyRuc}</p>
             </div>
-            <div>
+            <div className="text-right">
               <p className="text-[10px] font-black text-slate-400 uppercase">Ejercicio / Régimen</p>
               <p className="font-extrabold text-slate-900 text-sm">Año Gravable {selectedYear}</p>
-              <p className="text-emerald-700 font-bold uppercase">{config.ruc20TaxRegime}</p>
+              <p className="text-emerald-700 font-bold uppercase">{currentTaxRegime}</p>
             </div>
           </div>
 
